@@ -6,6 +6,8 @@ import MediaBrowse from './pages/MediaBrowse';
 import MediaDetail from './pages/MediaDetail';
 import Search from './pages/Search';
 import AllMediaPage from './pages/AllMediaPage';
+import AiAssistant from './components/AiAssistant';
+
 function App() {
   useEffect(() => {
     // Check system preference for dark mode
@@ -16,11 +18,14 @@ function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-50 dark:bg-dark-primary dark:text-dark-text transition-colors duration-200">
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-blue-100 dark:from-slate-900 dark:via-purple-900 dark:to-slate-900 dark:text-white transition-all duration-300">
+
         <Navbar />
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/movies" element={<AllMediaPage type="movie" />} />
+            <Route path="/assistant" element={<AiAssistant />} />
+
           <Route path="/tv" element={<AllMediaPage type="tv" />} />
           <Route path="/search" element={<Search />} />
           <Route path="/tv" element={<MediaBrowse type="tv" />} />
