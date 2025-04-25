@@ -84,8 +84,7 @@ export const getGenres = async (type: MediaType) => {
   const response = await tmdbApi.get(`/genre/${type}/list`);
   return response.data.genres;
 };
-<<<<<<< HEAD
-// src/services/tmdb.ts
+
 
 export const getMovieGenres = async (): Promise<{id: number, name: string}[]> => {
   const response = await fetch(`${BASE_URL}/genre/movie/list?api_key=${API_KEY}`);
@@ -129,5 +128,3 @@ export const getTVShowWithSeasons = async (tvId: number): Promise<TVShow> => {
   const data = await response.json();
   return data;
 };
-=======
->>>>>>> 8fe8772adc2c40c1d51c08cce49b0ae965cc40ee
