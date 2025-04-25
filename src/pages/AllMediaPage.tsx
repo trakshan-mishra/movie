@@ -45,7 +45,7 @@ export default function AllMediaPage({ type }: Props) {
           <MediaGrid items={media} type={type} />
           <div className="flex justify-center gap-4 mt-8">
             <button
-              className="px-4 py-2 bg-gray-300 rounded disabled:opacity-50"
+              className="px-4 py-2 bg-yellow-600 rounded disabled:opacity-50"
               disabled={page === 1}
               onClick={() => setPage((p) => p - 1)}
             >
@@ -53,7 +53,7 @@ export default function AllMediaPage({ type }: Props) {
             </button>
             <span className="self-center">Page {page} of {totalPages}</span>
             <button
-              className="px-4 py-2 bg-gray-300 rounded disabled:opacity-50"
+              className="px-4 py-2 bg-red-300 rounded disabled:opacity-50"
               disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
             >
