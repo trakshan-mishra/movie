@@ -2,4 +2,138 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Add these styles to your global CSS file */
+@layer components {
+  .movie-card {
+    @apply glass-card rounded-xl overflow-hidden shadow-lg transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl;
+    background: rgba(255, 255, 255, 0.05); /* glass effect */
+    backdrop-filter: blur(12px);
+  }
 
+  .dark .movie-card {
+    background: rgba(15, 15, 15, 0.3); /* dark glass */
+  }
+
+  .movie-poster {
+    @apply w-full h-[80%] object-cover;
+  }
+
+  .movie-info {
+    @apply flex flex-col justify-center items-center p-2 text-center text-sm text-foreground;
+  }
+}
+@layer utilities {
+  .glass-card {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20 shadow-lg;
+  }
+
+  .glass-input {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20 shadow-md;
+  }
+
+  .glass-button {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20 shadow-md transition-transform duration-300;
+  }
+
+  .glass-button:hover {
+    @apply bg-white/20 transform -translate-y-1 shadow-lg;
+  }
+}
+/* Base Glassmorphism Effect */
+.glass-card {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark Mode Glassmorphism */
+.dark .glass-card {
+  background: rgba(15, 15, 15, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Gradient Text */
+.gradient-text {
+  background: linear-gradient(to right, #ff0080, #7928ca);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Gradient Backgrounds */
+.gradient-bg {
+  background: linear-gradient(to right, #8a2387, #e94057, #f27121);
+}
+
+.gradient-bg-dark {
+  background: linear-gradient(to right, #434343, #000000);
+}
+
+/* Glass Input Styles */
+.glass-input {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.dark .glass-input {
+  background: rgba(20, 20, 20, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Glass Buttons */
+.glass-button {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s ease;
+}
+
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.dark .glass-button {
+  background: rgba(50, 50, 50, 0.4);
+}
+
+.dark .glass-button:hover {
+  background: rgba(70, 70, 70, 0.6);
+}
+
+/* Custom Scrollbar for Glass Elements */
+.glass-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.glass-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius:.5rem;
+}
+
+.glass-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.4);
+  border-radius: .5rem;
+}
+
+.dark .glass-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(100, 100, 100, 0.4);
+}
+
+/* Body Background for Gradient Effect */
+/* Body Background for Gradient Effect */
+body {
+  background: linear-gradient(135deg, #0d0d0e 0%, #161a20 100%);
+  min-height: 100vh;
+}
+
+.dark body {
+  background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+}
