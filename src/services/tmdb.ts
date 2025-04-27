@@ -84,7 +84,7 @@ export const getGenres = async (type: MediaType) => {
   const response = await tmdbApi.get(`/genre/${type}/list`);
   return response.data.genres;
 };
-// src/services/tmdb.ts
+
 
 export const getMovieGenres = async (): Promise<{id: number, name: string}[]> => {
   const response = await fetch(`${BASE_URL}/genre/movie/list?api_key=${API_KEY}`);
