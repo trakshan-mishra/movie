@@ -44,8 +44,8 @@ export default function Navbar() {
           </Link>
           
           <div className="flex items-center space-x-6">
-            <NavLink to="/movies" icon={<Film className="w-4 h-4" />} label="Movies" />
-            <NavLink to="/tv" icon={<Tv className="w-4 h-4" />} label="TV Shows" />
+            <NavLink to="/all/movie" icon={<Film className="w-4 h-4" />} label="Movies" />
+            <NavLink to="/all/tv" icon={<Tv className="w-4 h-4" />} label="TV Shows" />
             <NavLink to="/assistant" icon={<Sparkles className="w-4 h-4" />} label="Assistant" />
             <NavLink to="/search" icon={<Search className="w-4 h-4" />} label="Search" />
             

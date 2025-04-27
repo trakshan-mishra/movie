@@ -29,7 +29,7 @@ export default function Search() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search for movies or TV shows..."
-              className="w-full p-2 rounded border border-blue-400 text-black dark:text-white bg-white dark:bg-dark-secondary focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full p-2 rounded border border-yellow-400 text-black dark:text-black dark:bg-dark-secondary focus:outline-black focus:ring-2 focus:ring-blue-500"
             />
             <SearchIcon className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           </div>
@@ -37,7 +37,7 @@ export default function Search() {
           <select
             value={type}
             onChange={(e) => setType(e.target.value as MediaType)}
-            className="px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-4 py-2  rounded border border-yellow-400 text-black dark:text-black dark:bg-dark-secondary focus:outline-black focus:ring-2 focus:ring-blue-500"
           >
             <option value="movie">Movies</option>
             <option value="tv">TV Shows</option>
@@ -45,7 +45,7 @@ export default function Search() {
 
           <button
             type="submit"
-            className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-6 py-2 roundedborder bg-blue-500 text-white rounded-lg hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             Search
           </button>

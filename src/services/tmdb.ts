@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { Movie, TVShow, MediaType } from '../types/tmdb';
 
-const API_KEY = 'your api key';
+const API_KEY = '51d91894475b90ea5449bb71c1cd0a65';
 const BASE_URL = 'https://api.themoviedb.org/3';
 
 const tmdbApi = axios.create({
@@ -84,7 +84,6 @@ export const getGenres = async (type: MediaType) => {
   const response = await tmdbApi.get(`/genre/${type}/list`);
   return response.data.genres;
 };
-<<<<<<< HEAD
 // src/services/tmdb.ts
 
 export const getMovieGenres = async (): Promise<{id: number, name: string}[]> => {
@@ -129,5 +128,3 @@ export const getTVShowWithSeasons = async (tvId: number): Promise<TVShow> => {
   const data = await response.json();
   return data;
 };
-=======
->>>>>>> 8fe8772adc2c40c1d51c08cce49b0ae965cc40ee

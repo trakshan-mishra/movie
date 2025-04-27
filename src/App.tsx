@@ -23,12 +23,12 @@ function App() {
         <Navbar />
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/movies" element={<AllMediaPage type="movie" />} />
+          <Route path="/all/:type" element={<AllMediaPage />} />
+
             <Route path="/assistant" element={<AiAssistant />} />
 
-          <Route path="/tv" element={<AllMediaPage type="tv" />} />
+          
           <Route path="/search" element={<Search />} />
-          <Route path="/tv" element={<MediaBrowse type="tv" />} />
           <Route path="/:type/:id" element={<MediaDetail />} />
         </Routes>
       </div>
