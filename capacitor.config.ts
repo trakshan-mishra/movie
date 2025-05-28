@@ -1,9 +1,10 @@
-import type { CapacitorConfig } from '@capacitor/cli';
+import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.example.app',
-  appName: 'moviemax',
-  webDir: 'dist'
+  appId: 'com.trakshan.movieapp',
+  appName: 'MovieApp',
+  webDir: 'dist', // <-- CHANGE THIS
+  bundledWebRuntime: false
 };
 
 export default config;

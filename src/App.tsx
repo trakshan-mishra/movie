@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
+import LiveRoom from './pages/LiveRoom';
 import MediaBrowse from './pages/MediaBrowse';
 import MediaDetail from './pages/MediaDetail';
 import Search from './pages/Search';
@@ -27,7 +28,7 @@ function App() {
 
             <Route path="/assistant" element={<AiAssistant />} />
 
-          
+            <Route path="/live/:roomId" element={<LiveRoom />} />
           <Route path="/search" element={<Search />} />
           <Route path="/:type/:id" element={<MediaDetail />} />
         </Routes>

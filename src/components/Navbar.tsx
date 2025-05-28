@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Film, Tv, Search, Moon, Sun, Sparkles } from 'lucide-react';
+import { Film, Tv, Search, Moon, Sun, Sparkles, Airplay } from 'lucide-react';
 
 export default function Navbar() {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -39,7 +39,7 @@ export default function Navbar() {
               <Sparkles className="w-6 h-6 text-cyan-400 absolute top-0 left-0 transition-transform duration-500 scale-0 group-hover:scale-100 group-hover:animate-pulse" />
             </div>
             <span className="font-bold text-xl bg-clip-text text-transparent bg-gradient-to-r from-white to-cyan-300 transition-all duration-300 group-hover:from-cyan-400 group-hover:to-purple-500">
-              MovieDB
+              MovieMX
             </span>
           </Link>
           
@@ -48,6 +48,8 @@ export default function Navbar() {
             <NavLink to="/all/tv" icon={<Tv className="w-4 h-4" />} label="TV Shows" />
             <NavLink to="/assistant" icon={<Sparkles className="w-4 h-4" />} label="Assistant" />
             <NavLink to="/search" icon={<Search className="w-4 h-4" />} label="Search" />
+              <NavLink to="/live/:roomId" icon={<Airplay className="w-4 h-4" />} label="Live Room" />
+
             
             <button
               onClick={toggleDarkMode}

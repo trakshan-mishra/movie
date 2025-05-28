@@ -137,3 +137,22 @@ body {
 .dark body {
   background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
 }
+/* Add in your main CSS or Tailwind config */
+.toast-enter {
+  transform: translateY(-50px);
+  opacity: 0;
+}
+.toast-enter-active {
+  transform: translateY(0);
+  opacity: 1;
+  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+.toast-leave {
+  transform: translateY(0);
+  opacity: 1;
+}
+.toast-leave-active {
+  transform: translateY(-50px);
+  opacity: 0;
+  transition: transform 0.3s ease-in, opacity 0.3s ease-in;
+}

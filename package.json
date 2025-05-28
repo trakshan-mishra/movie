@@ -3,11 +3,19 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "description": "A React app packaged with Electron for Windows",
+  "author": "Trakshan Mishra <trakshan67@gmail.com>",
+  "main": "electron.cjs",
   "scripts": {
+    "start-server": "node server.cjs",
+    "dev-server": "nodemon server.cjs",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "react-scripts start",
+    "electron": "electron .",
+    "package": "electron-builder"
   },
   "dependencies": {
     "@capacitor/android": "^7.2.0",
@@ -25,6 +33,8 @@
     "react-feather": "^2.0.10",
     "react-player": "^2.16.0",
     "react-router-dom": "^6.22.3",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
@@ -33,6 +43,8 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.18",
+    "electron": "^35.2.1",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.9.1",
     "eslint-plugin-react-hooks": "^5.1.0-rc.0",
     "eslint-plugin-react-refresh": "^0.4.11",
