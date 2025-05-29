@@ -2,9 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 
-const socket = io('https://live-backend-1i4u.onrender.com', {
-  transports: ['websocket'], // Optional: ensures clean connection
-});
+const socket = io('http://localhost:4000');
 
 // TMDB API configuration
 const TMDB_API_KEY = '51d91894475b90ea5449bb71c1cd0a65';
@@ -437,7 +435,7 @@ export default function LiveRoom() {
   // Render the join room section
   const renderJoinSection = () => (
     <div className="bg-white/10 backdrop-blur-lg p-6 rounded-xl shadow-md text-white">
-      <h2 className="text-2xl font-semibold mb-4">Join Room: {roomId || 'Unknown'}</h2>
+      <h2 className="text-2xl font-semibold mb-4">Join Room: {roomId}</h2>
       
       {error && (
         <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-md text-white">
