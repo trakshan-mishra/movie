@@ -17,29 +17,65 @@ const initializeSocket = () => {
   }
   return socket;
 };
+
 // TMDB API configuration
 const TMDB_API_KEY = '51d91894475b90ea5449bb71c1cd0a65';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
+
+// Video sources configuration
+const SOURCES = [
+  {
+    name: 'VidSrc.cc',
+    getUrl: (type, id, season, episode) =>
+      type === 'tv' && season && episode
+        ? `https://vidsrc.cc/v2/embed/${type}/${id}/${season}/${episode}`
+        : `https://vidsrc.cc/v2/embed/${type}/${id}`,
+  },
+  {
+    name: 'VidSrc.icu',
+    getUrl: (type, id, season, episode) => 
+      type === 'tv' && season && episode
+        ? `https://vidsrc.icu/embed/${type}/${id}/${season}/${episode}`
+        : `https://vidsrc.icu/embed/${type}/${id}`
+  },
+  {
+    name: '2Embed.cc',
+    getUrl: (type, id, season, episode) => {
+      if (type === 'tv' && season && episode) {
+        return `https://www.2embed.cc/embedtv/${id}&s=${season}&e=${episode}`;
+      } else {
+        return `https://www.2embed.cc/embed/${id}`;
+      }
+    },
+  },
+  {
+    name: '2Embed.skin',
+    getUrl: (type, id, season, episode) => {
+      if (type === 'tv' && season && episode) {
+        return `https://www.2embed.skin/embedtv/${id}&s=${season}&e=${episode}`;
+      } else {
+        return `https://www.2embed.skin/embed/${id}`;
+      }
+    },
+  },
+];
 
 export default function LiveRoom() {
   const { roomId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
-  // Room and media stateconst rawType = searchParams.get('type') || '';
-const rawTmdbId = searchParams.get('tmdbId') || '';
-
-const type = ['movie', 'tv'].includes(rawType) ? rawType : null;
-const tmdbId = /^\d+$/.test(rawTmdbId) ? rawTmdbId : null;
-
-const title = searchParams.get('title') || 'Stream';
-
-if (!type || !tmdbId) {
-  console.error('Invalid media info in URL', { type: rawType, tmdbId: rawTmdbId });
-}
-
+  // Room and media state
+  const type = searchParams.get('type') || '';
+  const tmdbId = searchParams.get('tmdbId') || '';
+  const title = searchParams.get('title') || 'Stream';
   const [isPublic, setIsPublic] = useState(false);
   const [roomType, setRoomType] = useState('public'); // 'public' or 'private'
+  
+  // Video source state
+  const [currentSource, setCurrentSource] = useState(0);
+  const [season, setSeason] = useState(1);
+  const [episode, setEpisode] = useState(1);
   
   // User state
   const [username, setUsername] = useState('');
@@ -71,6 +107,12 @@ if (!type || !tmdbId) {
   // Public rooms state
   const [publicRooms, setPublicRooms] = useState([]);
   const [loadingRooms, setLoadingRooms] = useState(false);
+
+  // Get current video URL based on selected source
+  const getCurrentVideoUrl = () => {
+    if (!tmdbId || !type) return '';
+    return SOURCES[currentSource].getUrl(type, tmdbId, season, episode);
+  };
 
   // Initialize socket connection
   useEffect(() => {
@@ -126,14 +168,27 @@ if (!type || !tmdbId) {
     });
   
     socket.on('public_rooms', (rooms) => {
+      console.log('Received public rooms:', rooms); // Debug log
+      rooms.forEach(room => {
+        console.log(`Room ${room.id}:`, room.mediaInfo); // Debug each room's media info
+      });
       setPublicRooms(rooms);
       setLoadingRooms(false);
     });
-    
-  socket.on('media_changed', (mediaInfo) => {
-  const newUrl = `/live/${roomId}?type=${mediaInfo.type}&tmdbId=${mediaInfo.tmdbId}&title=${encodeURIComponent(mediaInfo.title)}`;
-  navigate(newUrl, { replace: true });
-});
+  
+    socket.on('media_changed', (mediaInfo) => {
+      // Update URL when media changes
+      const newUrl = `/live/${roomId}?type=${mediaInfo.type}&tmdbId=${mediaInfo.tmdbId}&title=${encodeURIComponent(mediaInfo.title)}`;
+      navigate(newUrl, { replace: true });
+      window.location.reload(); // Force iframe reload
+    });
+
+    // Listen for source changes
+    socket.on('source_changed', (data) => {
+      setCurrentSource(data.sourceIndex);
+      if (data.season) setSeason(data.season);
+      if (data.episode) setEpisode(data.episode);
+    });
   
     return () => {
       if (socket) {
@@ -147,6 +202,7 @@ if (!type || !tmdbId) {
         socket.off('kicked');
         socket.off('public_rooms');
         socket.off('media_changed');
+        socket.off('source_changed');
       }
     };
   }, [navigate, roomId]);
@@ -175,12 +231,14 @@ if (!type || !tmdbId) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
+
   useEffect(() => {
     // Only redirect if current URL expects a roomId but doesn't have it
     if (window.location.pathname.startsWith('/live/') && !roomId) {
       navigate('/', { replace: true });
     }
   }, [roomId, navigate]);
+
   if (window.location.pathname.startsWith('/live/') && (!roomId || roomId === ':roomId')) {
     return (
       <div className="max-w-6xl mx-auto p-4 text-center">
@@ -284,6 +342,7 @@ if (!type || !tmdbId) {
       setError('Failed to join room. Please try again.');
     }
   };
+
   const handleSync = (action) => {
     try {
       if (!videoRef.current || !videoRef.current.contentWindow) {
@@ -345,6 +404,7 @@ if (!type || !tmdbId) {
       navigate(`/live/${cleanRoomId}`);
     }
   };
+
   const handleCreateRoom = () => {
     if (!selectedMedia) return;
     
@@ -410,16 +470,45 @@ if (!type || !tmdbId) {
     }
   };
 
+  // Handle source change
+  const handleSourceChange = (sourceIndex) => {
+    setCurrentSource(sourceIndex);
+    if (isHost) {
+      socket.emit('change_source', { 
+        roomId, 
+        sourceIndex, 
+        season: type === 'tv' ? season : undefined,
+        episode: type === 'tv' ? episode : undefined
+      });
+    }
+  };
+
+  // Handle season/episode change for TV shows
+  const handleEpisodeChange = (newSeason, newEpisode) => {
+    setSeason(newSeason);
+    setEpisode(newEpisode);
+    if (isHost) {
+      socket.emit('change_source', { 
+        roomId, 
+        sourceIndex: currentSource, 
+        season: newSeason,
+        episode: newEpisode
+      });
+    }
+  };
+
   // Add logging to iframe onload
   const handleIframeLoad = () => {
     console.log('Video iframe loaded');
+    setPlayerReady(false);
     // Wait a short time to ensure the iframe content is fully loaded
     setTimeout(() => {
       if (videoRef.current && videoRef.current.contentWindow) {
         // Send an initial message to establish communication
         videoRef.current.contentWindow.postMessage({ action: 'init' }, '*');
+        setPlayerReady(true);
       }
-    }, 1000);
+    }, 2000);
   };
 
   // Render the search and create room section
@@ -567,7 +656,6 @@ if (!type || !tmdbId) {
       </button>
     </div>
   );
-
   // Render the room content
   const renderRoomContent = () => (
     <>
@@ -810,19 +898,28 @@ if (!type || !tmdbId) {
             <div 
               key={room.id}
               className="bg-white/20 p-3 rounded-md cursor-pointer hover:bg-white/30"
-              onClick={() => navigate(`/live/${room.id}`)}
+              onClick={() => {
+                // Include media information in the navigation URL
+                if (room.mediaInfo) {
+                  const { type, tmdbId, title } = room.mediaInfo;
+                  navigate(`/live/${room.id}?type=${type}&tmdbId=${tmdbId}&title=${encodeURIComponent(title)}`);
+                } else {
+                  // Fallback if no media info
+                  navigate(`/live/${room.id}`);
+                }
+              }}
             >
               <p className="font-medium">{room.mediaInfo?.title || 'Untitled Room'}</p>
               <p className="text-sm text-gray-300">
                 {room.mediaInfo?.type === 'movie' ? '🎬 Movie' : '📺 TV Show'} • {room.users.length} viewers
               </p>
+              <p className="text-xs text-gray-400 mt-1">Room ID: {room.id}</p>
             </div>
           ))}
         </div>
       )}
     </div>
   );
-
   // Room type toggle section
   const renderRoomTypeToggle = () => (
     <div className="flex justify-center mb-6">
