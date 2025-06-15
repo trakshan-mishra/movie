@@ -23,14 +23,15 @@ function App() {
 
         <Navbar />
         <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/all/:type" element={<AllMediaPage />} />
+  <Route path="/" element={<Home />} />
+  <Route path="/all/:type" element={<AllMediaPage />} />
+  <Route path="/assistant" element={<AiAssistant />} />
+  <Route path="/live" element={<Navigate to="/" replace />} />
+  <Route path="/live/:roomId" element={<LiveRoom />} />
+  <Route path="/search" element={<Search />} />
+  <Route path="/:type/:id" element={<MediaDetail />} />
+</Routes>
 
-            <Route path="/assistant" element={<AiAssistant />} />
-            <Route path="/live" element={<LiveRoom />} />
-          <Route path="/search" element={<Search />} />
-          <Route path="/:type/:id" element={<MediaDetail />} />
-        </Routes>
       </div>
     </BrowserRouter>
   );
