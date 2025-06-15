@@ -22,15 +22,15 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-slate-100 to-blue-100 dark:from-slate-900 dark:via-purple-900 dark:to-slate-900 dark:text-white transition-all duration-300">
 
         <Navbar />
-       <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/all/:type" element={<AllMediaPage />} />
-
-            <Route path="/assistant" element={<AiAssistant />} />
-            <Route path="/live/*" element={<LiveRoom />} />
-          <Route path="/search" element={<Search />} />
-          <Route path="/:type/:id" element={<MediaDetail />} />
-        </Routes>
+        <Routes>
+  <Route path="/" element={<Home />} />
+  <Route path="/all/:type" element={<AllMediaPage />} />
+  <Route path="/assistant" element={<AiAssistant />} />
+  <Route path="/live" element={<LiveRoom />} />            // ✅ added
+  <Route path="/live/:roomId" element={<LiveRoom />} />
+  <Route path="/search" element={<Search />} />
+  <Route path="/:type/:id" element={<MediaDetail />} />
+</Routes>
       </div>
     </BrowserRouter>
   );
