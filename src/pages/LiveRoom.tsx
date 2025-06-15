@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 
-const socket = io('http://localhost:4000');
+const socket = io('https://live-backend-1i4u.onrender.com');
 
 // TMDB API configuration
 const TMDB_API_KEY = '51d91894475b90ea5449bb71c1cd0a65';
