@@ -9,7 +9,12 @@ app.use(cors());
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: '*' },
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+  transports: ['websocket'],  // ✅ force websocket only
+  allowEIO3: true              // ✅ optional, helps with older clients
 });
 
 const rooms = {};
