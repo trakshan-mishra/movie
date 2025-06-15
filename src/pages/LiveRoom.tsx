@@ -26,10 +26,18 @@ export default function LiveRoom() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   
-  // Room and media state
-  const type = searchParams.get('type') || '';
-  const tmdbId = searchParams.get('tmdbId') || '';
-  const title = searchParams.get('title') || 'Stream';
+  // Room and media stateconst rawType = searchParams.get('type') || '';
+const rawTmdbId = searchParams.get('tmdbId') || '';
+
+const type = ['movie', 'tv'].includes(rawType) ? rawType : null;
+const tmdbId = /^\d+$/.test(rawTmdbId) ? rawTmdbId : null;
+
+const title = searchParams.get('title') || 'Stream';
+
+if (!type || !tmdbId) {
+  console.error('Invalid media info in URL', { type: rawType, tmdbId: rawTmdbId });
+}
+
   const [isPublic, setIsPublic] = useState(false);
   const [roomType, setRoomType] = useState('public'); // 'public' or 'private'
   
