@@ -48,8 +48,8 @@ export default function Navbar() {
             <NavLink to="/all/tv" icon={<Tv className="w-4 h-4" />} label="TV Shows" />
             <NavLink to="/assistant" icon={<Sparkles className="w-4 h-4" />} label="Assistant" />
             <NavLink to="/search" icon={<Search className="w-4 h-4" />} label="Search" />
-              <NavLink to="/live/:roomId" icon={<Airplay className="w-4 h-4" />} label="Live Room" />
-
+            
+              <NavLink to="/live" icon={<Airplay className="w-4 h-4" />} label="Live Rooms" />
             
             <button
               onClick={toggleDarkMode}
