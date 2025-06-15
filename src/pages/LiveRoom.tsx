@@ -121,13 +121,11 @@ export default function LiveRoom() {
       setPublicRooms(rooms);
       setLoadingRooms(false);
     });
-  
-    socket.on('media_changed', (mediaInfo) => {
-      // Update URL when media changes
-      const newUrl = `/live/${roomId}?type=${mediaInfo.type}&tmdbId=${mediaInfo.tmdbId}&title=${encodeURIComponent(mediaInfo.title)}`;
-      navigate(newUrl, { replace: true });
-      window.location.reload(); // Force iframe reload
-    });
+    
+  socket.on('media_changed', (mediaInfo) => {
+  const newUrl = `/live/${roomId}?type=${mediaInfo.type}&tmdbId=${mediaInfo.tmdbId}&title=${encodeURIComponent(mediaInfo.title)}`;
+  navigate(newUrl, { replace: true });
+});
   
     return () => {
       if (socket) {
