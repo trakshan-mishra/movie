@@ -5,11 +5,18 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 
 const app = express();
-app.use(cors());
+
+// ✅ Allow both local dev and deployed frontend
+app.use(cors({ origin: ['http://localhost:5173', 'https://moviemx.netlify.app'] }));
 
 const server = http.createServer(app);
+
 const io = new Server(server, {
-  cors: { origin: 'https://moviemx.netlify.app/' },
+  cors: {
+    origin: ['http://localhost:5173', 'https://moviemx.netlify.app'],
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
 });
 
 const rooms = {};
@@ -31,6 +38,12 @@ io.on('connection', (socket) => {
     socket.join(roomId);
 
     io.to(roomId).emit('room_users', Object.values(rooms[roomId].users));
+
+    // ✅ Send current media info to the joining user
+    if (rooms[roomId].mediaInfo) {
+      io.to(socket.id).emit('media_changed', rooms[roomId].mediaInfo);
+    }
+
     callback({ host: rooms[roomId].host === socket.id });
   });
 
@@ -69,8 +82,8 @@ io.on('connection', (socket) => {
   socket.on('change_media', ({ roomId, mediaInfo }) => {
     if (rooms[roomId]) {
       rooms[roomId].mediaInfo = mediaInfo;
+      io.to(roomId).emit('media_changed', mediaInfo);
     }
-    io.to(roomId).emit('media_changed', mediaInfo);
   });
 
   socket.on('update_room_visibility', ({ roomId, isPublic }) => {
@@ -107,7 +120,7 @@ io.on('connection', (socket) => {
 
         io.to(roomId).emit('room_users', Object.values(room.users));
 
-        // Clean up empty rooms
+        // Delete room if empty
         if (Object.keys(room.users).length === 0) {
           delete rooms[roomId];
         }
@@ -117,6 +130,8 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(4000, () => {
-  console.log('Socket.IO server running on http://localhost:4000');
+// ✅ Use dynamic port for Render or default to 4000
+const PORT = process.env.PORT || 4000;
+server.listen(PORT, () => {
+  console.log(`Socket.IO server running on port ${PORT}`);
 });
