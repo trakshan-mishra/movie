@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
-
-const socket = io('https://live-backend-1i4u.onrender.com');
+const socket = io('https://live-backend-1i4u.onrender.com', {
+  transports: ['websocket']
+});
 
 // TMDB API configuration
 const TMDB_API_KEY = '51d91894475b90ea5449bb71c1cd0a65';
