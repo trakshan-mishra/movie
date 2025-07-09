@@ -13,13 +13,13 @@ interface Props {
 
 // List of streaming sources to try
 const SOURCES = [
-  {
+ /* {
     name: 'VidSrc',
     getUrl: (type: string, id: string, season?: number, episode?: number) =>
       type === 'tv' && season && episode
         ? `https://vidsrc.cc/v2/embed/${type}/${id}/${season}/${episode}`
         : `https://vidsrc.cc/v2/embed/${type}/${id}`,
-  },
+  }, */
   {
     name: 'VidSrc',
     getUrl: (type: string, id: string, season?: number, episode?: number) => 
