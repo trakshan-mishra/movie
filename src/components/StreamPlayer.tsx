@@ -13,6 +13,15 @@ interface Props {
 
 // List of streaming sources to try
 const SOURCES = [
+
+  {
+    name: 'VidLink',
+    getUrl: (type: string, id: string, s?: number, e?: number) =>
+      type === 'tv' && s && e
+        ? `https://vidlink.pro/tv/${id}/${s}/${e}?autoplay=true&primaryColor=E53E3E`
+        : `https://vidlink.pro/movie/${id}?autoplay=true&primaryColor=E53E3E`,
+  },
+
   {
     name: 'VidSrc',
     getUrl: (type: string, id: string, season?: number, episode?: number) =>
