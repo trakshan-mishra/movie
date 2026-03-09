@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8664052708087800"
      crossorigin="anonymous"></script>
@@ -7,6 +7,52 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MovieMX</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body, #root {
+        min-height: 100vh;
+      }
+
+      body {
+        background: linear-gradient(135deg, #0f0c29 0%, #1a1a2e 50%, #16213e 100%);
+        background-attachment: fixed;
+        color: #f1f5f9;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* Ensure all text is light by default */
+      p, span, h1, h2, h3, h4, h5, h6, label, a, button, input, select, textarea {
+        color: inherit;
+      }
+
+      /* Prevent pure white flash */
+      #root {
+        background: transparent;
+      }
+
+      /* Scrollbar styling */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.4); border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.7); }
+
+      /* Glass card default */
+      .glass {
+        background: rgba(255,255,255,0.07);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        border: 1px solid rgba(255,255,255,0.13);
+      }
+
+      /* Prevent focus outlines being ugly */
+      button:focus-visible, input:focus-visible, select:focus-visible {
+        outline: 2px solid rgba(139,92,246,0.6);
+        outline-offset: 2px;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

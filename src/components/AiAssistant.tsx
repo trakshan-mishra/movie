@@ -1,201 +1,366 @@
 'use client';
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { Sparkles, Search } from 'lucide-react';
-import MediaGrid from './MediaGrid';
-import { Movie, TVShow } from '../types/tmdb';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Zap, Play, Sparkles } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
+interface TmdbItem {
+  id: number;
+  title?: string;
+  name?: string;
+  poster_path?: string | null;
+  vote_average?: number;
+  release_date?: string;
+  first_air_date?: string;
+  media_type?: string;
 }
 
-const TMDB_API_KEY = '51d91894475b90ea5449bb71c1cd0a65';
+interface Msg {
+  role: 'user' | 'assistant';
+  content: string;
+  picks?: TmdbItem[];
+}
 
-const AiAssistant: React.FC = () => {
-  const [userInput, setUserInput] = useState('');
-  const [conversation, setConversation] = useState<Message[]>([
-    { role: 'assistant', content: "Hey there! 👋 I'm your movie buddy. What are you in the mood for today? 🎬✨" }
+const TMDB_KEY = "51d91894475b90ea5449bb71c1cd0a65";
+
+const SUGGESTIONS = [
+  "Something great tonight 🌙",
+  "Make me laugh 😂",
+  "Make me cry 😭",
+  "Best thrillers ever made",
+  "Hidden gems nobody talks about",
+  "Like Breaking Bad but different",
+];
+
+const G = {
+  card: {
+    background: 'rgba(255,255,255,0.07)',
+    backdropFilter: 'blur(20px)',
+    WebkitBackdropFilter: 'blur(20px)',
+    border: '1px solid rgba(255,255,255,0.12)',
+  } as React.CSSProperties,
+};
+
+/* ---------------- RECOMMENDATION ENGINE ---------------- */
+
+function detectGenre(query: string) {
+  const q = query.toLowerCase();
+
+  if (q.includes("laugh") || q.includes("funny") || q.includes("comedy")) return "35";
+  if (q.includes("cry") || q.includes("sad") || q.includes("emotional")) return "18";
+  if (q.includes("thriller") || q.includes("suspense")) return "53";
+  if (q.includes("action")) return "28";
+  if (q.includes("romance") || q.includes("love")) return "10749";
+  if (q.includes("horror") || q.includes("scary")) return "27";
+
+  return "";
+}
+
+async function getRecommendations(query: string): Promise<TmdbItem[]> {
+
+  const genre = detectGenre(query);
+
+  const url = genre
+    ? `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_KEY}&with_genres=${genre}&sort_by=popularity.desc`
+    : `https://api.themoviedb.org/3/trending/movie/week?api_key=${TMDB_KEY}`;
+
+  const res = await fetch(url);
+  const data = await res.json();
+
+  return (data.results ?? []).slice(0,5);
+}
+
+/* ---------------- COMPONENT ---------------- */
+
+export default function AiAssistant() {
+
+  const navigate = useNavigate();
+
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const [msgs, setMsgs] = useState<Msg[]>([
+    {
+      role: "assistant",
+      content:
+        "Tell me your mood 🎬 Comedy? Thriller? Something emotional? I'll find the perfect watch.",
+    },
   ]);
-  const [recommendations, setRecommendations] = useState<(Movie | TVShow)[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const conversationRef = useRef<HTMLDivElement>(null);
+
+  const chatRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (conversationRef.current) {
-      conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
-    }
-  }, [conversation, isLoading]);
+    if (chatRef.current)
+      chatRef.current.scrollTop = chatRef.current.scrollHeight;
+  }, [msgs, loading]);
 
-  const callGeminiAPI = async (prompt: string): Promise<string> => {
+  const send = useCallback(async (text?: string) => {
+
+    const content = (text ?? input).trim();
+    if (!content || loading) return;
+
+    const userMsg: Msg = { role: "user", content };
+
+    setMsgs(prev => [...prev, userMsg]);
+    setInput("");
+    setLoading(true);
+
     try {
-      const apiKey = 'AIzaSyAUMnTrkkufLXhN4a8GCVm9kEjUZVf4wk4';
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        })
-      });
 
-      if (!response.ok) throw new Error(`API request failed with status ${response.status}`);
-      const data = await response.json();
-      return data.candidates[0].content.parts[0].text;
-    } catch (error) {
-      console.error("Error calling Gemini API:", error);
-      return "Oops! Couldn't connect to my database right now. 😔 Try again later!";
+      const picks = await getRecommendations(content);
+
+      const responses = [
+        "Oh you NEED to see these.",
+        "Trust me on this lineup.",
+        "Tonight's watchlist sorted.",
+        "These should hit the spot.",
+        "Queue these up immediately."
+      ];
+
+      const random = responses[Math.floor(Math.random()*responses.length)];
+
+      setMsgs(prev => [
+        ...prev,
+        {
+          role: "assistant",
+          content: random,
+          picks
+        }
+      ]);
+
+    } catch {
+
+      setMsgs(prev => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Something broke while searching. Try again."
+        }
+      ]);
+
+    } finally {
+      setLoading(false);
+      inputRef.current?.focus();
     }
+
+  }, [input, loading]);
+
+  const goPlay = (item: TmdbItem) => {
+
+    const isTV =
+      item.media_type === "tv" || (!item.title && !!item.name);
+
+    navigate(`/${isTV ? "tv" : "movie"}/${item.id}`);
   };
-
-  const fetchMediaDetails = async (title: string): Promise<Movie | TVShow | null> => {
-    try {
-      const searchRes = await fetch(`https://api.themoviedb.org/3/search/multi?query=${encodeURIComponent(title)}&api_key=${TMDB_API_KEY}`);
-      const searchData = await searchRes.json();
-      const firstResult = searchData.results?.[0];
-      return firstResult || null;
-    } catch (error) {
-      console.error('Error fetching media details:', error);
-      return null;
-    }
-  };
-
-  const detectIntent = (input: string) => {
-    const lower = input.toLowerCase();
-    if (lower.includes('worth') || lower.includes('good') || lower.includes('is') && lower.includes('good')) {
-      return 'worth_it';
-    }
-    if (lower.includes('which one') || lower.includes('what should i pick') || lower.includes('suggest one')) {
-      return 'pick_one';
-    }
-    return 'recommend';
-  };
-
-  const handleSubmit = useCallback(async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const input = userInput.trim();
-    if (!input) return;
-
-    const userMsg = { role: 'user' as const, content: input };
-    setConversation(prev => [...prev, userMsg]);
-    setUserInput('');
-    setIsLoading(true);
-
-    const thinkingMsg = { role: 'assistant' as const, content: 'Thinking of something awesome for you... 🤔🍿' };
-    setConversation(prev => [...prev, thinkingMsg]);
-
-    const intent = detectIntent(input);
-
-    if (intent === 'worth_it') {
-      const title = input.replace(/is|worth|good|\?/gi, '').trim();
-      const response = await callGeminiAPI(`Is "${title}" worth watching? Reply like an excited movie buddy with casual tone and emojis.`);
-      setConversation(prev => {
-        const updated = [...prev];
-        const idx = updated.findLastIndex(msg => msg.role === 'assistant' && msg.content.includes('Thinking'));
-        if (idx > -1) updated[idx] = { role: 'assistant', content: response };
-        return updated;
-      });
-      setIsLoading(false);
-      return;
-    }
-
-    if (intent === 'pick_one' && recommendations.length > 0) {
-      const best = [...recommendations].sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))[0];
-      const title = (best as any).title || (best as any).name || 'one of the titles';
-      const response = await callGeminiAPI(`Tell me why "${title}" is a great choice for the user in a casual, excited tone with emojis.`);
-      setConversation(prev => {
-        const updated = [...prev];
-        const idx = updated.findLastIndex(msg => msg.role === 'assistant' && msg.content.includes('Thinking'));
-        if (idx > -1) updated[idx] = { role: 'assistant', content: response };
-        return updated;
-      });
-      setIsLoading(false);
-      return;
-    }
-
-    // Otherwise: normal recommendations
-    const aiResponse = await callGeminiAPI(`Suggest 5 highly rated movies or TV shows for this request: "${input}". Only list their titles, one per line.`);
-    const titles = aiResponse.split('\n').map(line => line.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
-
-    const mediaItems = await Promise.all(titles.map(title => fetchMediaDetails(title)));
-    const validItems = mediaItems.filter((item): item is Movie | TVShow => item !== null);
-
-    setRecommendations(validItems);
-
-    const cheerfulReply = `You're gonna love these picks! 🎉 Let me know which one you're vibing with! 🍿😎`;
-    setConversation(prev => {
-      const updated = [...prev];
-      const idx = updated.findLastIndex(msg => msg.role === 'assistant' && msg.content.includes('Thinking'));
-      if (idx > -1) updated[idx] = { role: 'assistant', content: cheerfulReply };
-      return updated;
-    });
-
-    setIsLoading(false);
-  }, [userInput, recommendations]);
 
   return (
-    <div className="max-w-6xl mx-auto p-6 mt-6 mb-10 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 shadow-xl dark:bg-black/30 dark:border-white/10">
-      
-      {/* Header */}
-      <div className="flex items-center gap-2 mb-6">
-        <Sparkles className="w-6 h-6 text-blue-500" />
-        <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-teal-500 bg-clip-text text-transparent">
-          Your Movie Buddy 🎥✨
-        </h2>
+
+    <div style={{ maxWidth: 880, margin: "0 auto", padding: 32, color: "#f1f5f9" }}>
+
+      {/* HEADER */}
+
+      <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:20 }}>
+
+        <div style={{
+          width:46,
+          height:46,
+          borderRadius:12,
+          background:"linear-gradient(135deg,#7c3aed,#06b6d4)",
+          display:"flex",
+          alignItems:"center",
+          justifyContent:"center"
+        }}>
+          <Zap color="white"/>
+        </div>
+
+        <div>
+
+          <h2 style={{ fontWeight:800 }}>CinemaBot</h2>
+
+          <p style={{ fontSize:11, opacity:0.5 }}>
+            Free AI Movie Companion
+          </p>
+
+        </div>
+
+        <Sparkles style={{ marginLeft:"auto", opacity:0.6 }}/>
+
       </div>
 
-      {/* Conversation */}
-      <div ref={conversationRef} className="bg-white/30 dark:bg-gray-900/50 rounded-2xl border border-white/20 dark:border-gray-700/50 shadow-inner p-4 h-72 overflow-y-auto scroll-smooth mb-6">
-        {conversation.map((msg, i) => (
-          <div key={i} className={`mb-3 ${msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'}`}>
-            <div className={`inline-block max-w-[80%] p-3 rounded-xl text-sm shadow ${
-              msg.role === 'user'
-                ? 'bg-gradient-to-r from-blue-500 to-teal-500 text-white'
-                : 'bg-white/80 dark:bg-gray-700 text-gray-800 dark:text-white'
-            }`}>
+      {/* CHAT */}
+
+      <div
+        ref={chatRef}
+        style={{
+          ...G.card,
+          borderRadius:16,
+          padding:16,
+          height:420,
+          overflowY:"auto",
+          display:"flex",
+          flexDirection:"column",
+          gap:12
+        }}
+      >
+
+        {msgs.map((msg,i)=>(
+          <div key={i}
+          style={{
+            alignSelf: msg.role==="user" ? "flex-end":"flex-start",
+            maxWidth:"80%"
+          }}>
+
+            <div
+            style={{
+              padding:"10px 14px",
+              borderRadius:12,
+              background: msg.role==="user"
+                ? "linear-gradient(135deg,#7c3aed,#4f46e5)"
+                : "rgba(255,255,255,0.1)"
+            }}
+            >
               {msg.content}
             </div>
+
+            {/* MEDIA PICKS */}
+
+            {msg.picks && (
+
+              <div style={{
+                display:"flex",
+                gap:10,
+                marginTop:10,
+                overflowX:"auto"
+              }}>
+
+                {msg.picks.map(item=>{
+
+                  const title = item.title ?? item.name ?? "";
+
+                  return (
+
+                    <div
+                      key={item.id}
+                      onClick={()=>goPlay(item)}
+                      style={{
+                        width:110,
+                        cursor:"pointer"
+                      }}
+                    >
+
+                      <img
+                        src={`https://image.tmdb.org/t/p/w200${item.poster_path}`}
+                        style={{
+                          width:"100%",
+                          borderRadius:8
+                        }}
+                      />
+
+                      <p style={{
+                        fontSize:11,
+                        marginTop:4
+                      }}>
+                        {title}
+                      </p>
+
+                    </div>
+
+                  );
+
+                })}
+
+              </div>
+
+            )}
+
           </div>
         ))}
-        {isLoading && (
-          <div className="flex justify-start mb-3">
-            <div className="inline-block max-w-[80%] p-3 rounded-xl text-sm shadow bg-white/80 dark:bg-gray-700 text-gray-800 dark:text-white">
-              <div className="flex space-x-1 animate-pulse">
-                <div className="h-2 w-2 bg-gray-400 rounded-full"></div>
-                <div className="h-2 w-2 bg-gray-400 rounded-full"></div>
-                <div className="h-2 w-2 bg-gray-400 rounded-full"></div>
-              </div>
-            </div>
-          </div>
-        )}
+
       </div>
 
-      {/* Media Recommendations */}
-      {recommendations.length > 0 && (
-        <div className="mt-8">
-          <MediaGrid items={recommendations} type="movie" />
+      {/* SUGGESTIONS */}
+
+      {msgs.length===1 && (
+
+        <div style={{
+          display:"flex",
+          flexWrap:"wrap",
+          gap:8,
+          marginTop:10
+        }}>
+
+          {SUGGESTIONS.map(s=>(
+            <button
+              key={s}
+              onClick={()=>send(s)}
+              style={{
+                padding:"6px 12px",
+                borderRadius:20,
+                background:"rgba(255,255,255,0.1)",
+                border:"none",
+                cursor:"pointer",
+                color:"#111010"
+              }}
+            >
+              {s}
+            </button>
+          ))}
+
         </div>
+
       )}
 
-      {/* Input Section */}
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 mt-6">
+      {/* INPUT */}
+
+      <div
+        style={{
+          ...G.card,
+          marginTop:12,
+          borderRadius:12,
+          padding:"6px 10px",
+          display:"flex",
+          alignItems:"center",
+          gap:8
+        }}
+      >
+
         <input
-          type="text"
-          value={userInput}
-          onChange={(e) => setUserInput(e.target.value)}
-          placeholder="What's on your mind? 🎬 (e.g., Dark shows, Uplifting movies)"
-          className="flex-1 p-3 rounded-full bg-white/50 dark:bg-gray-800/50 border border-white/20 dark:border-gray-700/50 shadow-inner focus:outline-none"
+          ref={inputRef}
+          value={input}
+          onChange={e=>setInput(e.target.value)}
+          onKeyDown={e=>{
+            if(e.key==="Enter") send();
+          }}
+          placeholder="Ask for a movie..."
+          style={{
+            flex:1,
+            background:"transparent",
+            border:"none",
+            outline:"none",
+            color:"white"
+          }}
         />
+
         <button
-          type="submit"
-          disabled={!userInput.trim()}
-          className="p-3 rounded-full bg-gradient-to-r from-blue-500 to-teal-500 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={()=>send()}
+          disabled={!input.trim() || loading}
+          style={{
+            width:36,
+            height:36,
+            borderRadius:8,
+            border:"none",
+            background:"linear-gradient(135deg,#7c3aed,#4f46e5)",
+            display:"flex",
+            alignItems:"center",
+            justifyContent:"center"
+          }}
         >
-          <Search className="w-5 h-5" />
+          <Send size={16} color="white"/>
         </button>
-      </form>
+
+      </div>
 
     </div>
   );
-};
-
-export default AiAssistant;
+}
