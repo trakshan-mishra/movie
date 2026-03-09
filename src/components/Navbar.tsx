@@ -1,101 +1,105 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Film, Tv, Search, Moon, Sun, Sparkles, Radio, Clapperboard } from 'lucide-react';
+import { Film, Tv, Search, Sparkles, Radio, Sun, Moon } from 'lucide-react';
 
 export default function Navbar() {
-  const [isDark,     setIsDark]     = useState(true);
-  const [isScrolled, setIsScrolled] = useState(false);
+  const [isDark, setIsDark] = useState(true);
   const location = useLocation();
 
   useEffect(() => {
-    /* Always start dark — site is designed for dark */
     document.documentElement.classList.add('dark');
-    document.body.style.background = 'linear-gradient(135deg,#0f0c29 0%,#1a1a2e 50%,#16213e 100%)';
-    document.body.style.minHeight   = '100vh';
     setIsDark(true);
-
-    const onScroll = () => setIsScrolled(window.scrollY > 10);
-    window.addEventListener('scroll', onScroll);
-    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
   const toggleDark = () => {
     const on = document.documentElement.classList.toggle('dark');
     setIsDark(on);
-    document.body.style.background = on
-      ? 'linear-gradient(135deg,#0f0c29 0%,#1a1a2e 50%,#16213e 100%)'
-      : 'linear-gradient(135deg,#e8e0ff 0%,#f0f4ff 50%,#e0f0ff 100%)';
-  };
-
-  const navStyle: React.CSSProperties = {
-    background: isScrolled ? 'rgba(10,8,30,0.92)' : 'rgba(10,8,30,0.75)',
-    backdropFilter: 'blur(24px)',
-    WebkitBackdropFilter: 'blur(24px)',
-    borderBottom: '1px solid rgba(255,255,255,0.08)',
-    boxShadow: isScrolled ? '0 4px 30px rgba(0,0,0,0.4)' : 'none',
+    document.body.style.background = on ? '' : '#f5f5f5';
   };
 
   const links = [
-    { to: '/all/movie',  icon: <Film className="w-4 h-4"/>,        label: 'Movies'   },
-    { to: '/all/tv',     icon: <Tv className="w-4 h-4"/>,          label: 'TV Shows' },
-    { to: '/assistant',  icon: <Sparkles className="w-4 h-4"/>,    label: 'AI'       },
-    { to: '/search',     icon: <Search className="w-4 h-4"/>,      label: 'Search'   },
-    { to: '/live',       icon: <Radio className="w-4 h-4"/>,       label: 'Live',    accent: true },
+    { to: '/all/movie', icon: <Film size={15} />, label: 'Movies' },
+    { to: '/all/tv', icon: <Tv size={15} />, label: 'TV Shows' },
+    { to: '/assistant', icon: <Sparkles size={15} />, label: 'AI' },
+    { to: '/search', icon: <Search size={15} />, label: 'Search' },
+    { to: '/live', icon: <Radio size={15} />, label: 'Live', live: true },
   ];
 
   return (
-    <nav className="sticky top-0 z-50 transition-all duration-300" style={navStyle}>
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-2.5 group">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-110"
-              style={{ background: 'linear-gradient(135deg,#7c3aed,#4f46e5)' }}>
-              <Clapperboard className="w-4.5 h-4.5 text-slate-900 dark:text-white"/>
-            </div>
-            <span className="font-black text-xl tracking-tight"
-              style={{ background: 'linear-gradient(90deg,#e2e8f0,#a78bfa)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>
-              
-            </span>
-          </Link>
-
-          {/* Links */}
-          <div className="flex items-center gap-1">
-            {links.map(({ to, icon, label, accent }) => {
-              const active = to === '/live'
-                ? location.pathname.startsWith('/live')
-                : location.pathname === to;
-
-              return (
-                <Link key={to} to={to}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all duration-200 whitespace-nowrap"
-                  style={{
-                    background: active
-                      ? accent ? 'rgba(139,92,246,0.25)' : 'rgba(255,255,255,0.1)'
-                      : 'transparent',
-                    color: active
-                      ? accent ? '#c4b5fd' : '#f1f5f9'
-                      : '#94a3b8',
-                    border: active
-                      ? `1px solid ${accent ? 'rgba(139,92,246,0.5)' : 'rgba(255,255,255,0.15)'}`
-                      : '1px solid transparent',
-                  }}>
-                  <span className={active && accent ? 'animate-pulse text-violet-400' : ''}>{icon}</span>
-                  <span className="hidden sm:inline">{label}</span>
-                </Link>
-              );
-            })}
-
-            {/* Dark toggle */}
-            <button onClick={toggleDark}
-              className="w-10 h-10 rounded-xl flex items-center justify-center ml-1 transition-all active:scale-90"
-              style={{ background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.12)' }}>
-              {isDark
-                ? <Sun className="w-4 h-4 text-amber-400"/>
-                : <Moon className="w-4 h-4 text-slate-300"/>}
-            </button>
+    <nav className="navbar">
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 20px', width: '100%', display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Logo */}
+        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 8, marginRight: 8, textDecoration: 'none', flexShrink: 0 }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: 8,
+            background: 'linear-gradient(135deg, #0a84ff, #5e5ce6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <Film size={14} color="white" strokeWidth={2.5} />
           </div>
+          <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.03em', color: '#f5f5f7' }}>
+            MovieMX
+          </span>
+        </Link>
+
+        {/* Links */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 1, justifyContent: 'center' }}>
+          {links.map(({ to, icon, label, live }) => {
+            const active = location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
+            return (
+              <Link
+                key={to}
+                to={to}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '6px 12px', borderRadius: 8,
+                  fontSize: 13, fontWeight: 500, letterSpacing: '-0.01em',
+                  textDecoration: 'none',
+                  color: active ? '#f5f5f7' : 'rgba(245,245,247,0.5)',
+                  background: active ? 'rgba(255,255,255,0.1)' : 'transparent',
+                  transition: 'all 0.15s ease',
+                  whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={e => {
+                  if (!active) (e.currentTarget as HTMLElement).style.color = 'rgba(245,245,247,0.8)';
+                }}
+                onMouseLeave={e => {
+                  if (!active) (e.currentTarget as HTMLElement).style.color = 'rgba(245,245,247,0.5)';
+                }}
+              >
+                {live ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span className="live-dot" />
+                    <span className="hidden sm:inline" style={{ color: 'inherit' }}>{label}</span>
+                  </span>
+                ) : (
+                  <>
+                    <span style={{ opacity: active ? 1 : 0.7 }}>{icon}</span>
+                    <span className="hidden sm:inline">{label}</span>
+                  </>
+                )}
+              </Link>
+            );
+          })}
         </div>
+
+        {/* Dark toggle */}
+        <button
+          onClick={toggleDark}
+          style={{
+            width: 32, height: 32, borderRadius: 8, border: 'none',
+            background: 'rgba(255,255,255,0.08)', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, transition: 'background 0.15s ease',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.14)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.08)')}
+        >
+          {isDark
+            ? <Sun size={14} color="rgba(245,245,247,0.6)" />
+            : <Moon size={14} color="rgba(245,245,247,0.6)" />}
+        </button>
       </div>
     </nav>
   );

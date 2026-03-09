@@ -1,39 +1,37 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
-import LiveRoom from './pages/LiveRoom';
-import MediaBrowse from './pages/MediaBrowse';
+import AllMediaPage from './pages/AllMediaPage';
 import MediaDetail from './pages/MediaDetail';
 import Search from './pages/Search';
-import AllMediaPage from './pages/AllMediaPage';
 import AiAssistant from './components/AiAssistant';
+import LiveRoom from './pages/LiveRoom';
 
 function App() {
   useEffect(() => {
-    // Check system preference for dark mode
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      document.documentElement.classList.add('dark');
-    }
+    document.documentElement.classList.add('dark');
   }, []);
 
   return (
-    <BrowserRouter>
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-blue-100 dark:from-slate-900 dark:via-purple-900 dark:to-slate-900 dark:text-white transition-all duration-300">
-
+    <HashRouter>
+      <div style={{ minHeight: '100vh' }}>
         <Navbar />
         <Routes>
-  <Route path="/" element={<Home />} />
-  <Route path="/all/:type" element={<AllMediaPage />} />
-  <Route path="/assistant" element={<AiAssistant />} />
-  <Route path="/live" element={<LiveRoom />} />            // ✅ added
-  <Route path="/live/:roomId" element={<LiveRoom />} />
-  <Route path="/search" element={<Search />} />
-  <Route path="/:type/:id" element={<MediaDetail />} />
-</Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/all/:type" element={<AllMediaPage />} />
+          <Route path="/assistant" element={<AiAssistant />} />
+          <Route path="/search" element={<Search />} />
+          <Route path="/live" element={<LiveRoom />} />
+          <Route path="/live/:roomId" element={<LiveRoom />} />
+          {/* /:type/:id — handles both movie and tv */}
+          <Route path="/:type/:id" element={<MediaDetail />} />
+          {/* Catch-all */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </div>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
-export default App
+export default App;
