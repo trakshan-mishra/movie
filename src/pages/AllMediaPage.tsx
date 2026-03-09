@@ -3,117 +3,120 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { Movie, TVShow, MediaType } from '../types/tmdb';
 import { getMovieGenres, getTVGenres } from '../services/tmdb';
 import MediaGrid from '../components/MediaGrid';
+import { ChevronLeft, ChevronRight, SlidersHorizontal, Check } from 'lucide-react';
 
 const API_KEY = '51d91894475b90ea5449bb71c1cd0a65';
 
-export default function AllMediaPage() {
-  const { type } = useParams<{ type: MediaType }>();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
+const glass: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.07)',
+  backdropFilter: 'blur(24px)',
+  WebkitBackdropFilter: 'blur(24px)',
+  border: '1px solid rgba(255,255,255,0.13)',
+};
 
-  const page = parseInt(searchParams.get('page') || '1', 10);
+export default function AllMediaPage() {
+  const { type }   = useParams<{ type: MediaType }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate   = useNavigate();
+
+  const page          = parseInt(searchParams.get('page') || '1', 10);
   const selectedGenre = searchParams.get('genre') || '';
 
-  const [media, setMedia] = useState<(Movie | TVShow)[]>([]);
-  const [genres, setGenres] = useState<{ id: number; name: string }[]>([]);
+  const [media,      setMedia]      = useState<(Movie | TVShow)[]>([]);
+  const [genres,     setGenres]     = useState<{ id: number; name: string }[]>([]);
   const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading] = useState(true);
+  const [loading,    setLoading]    = useState(true);
+  const [showGenres, setShowGenres] = useState(false);
 
-  // Load genres on type change
   useEffect(() => {
-    if (!type || (type !== 'movie' && type !== 'tv')) {
-      navigate('/all/movie');
-      return;
-    }
-
-    const loadGenres = async () => {
-      const genreList = type === 'movie' ? await getMovieGenres() : await getTVGenres();
-      setGenres(genreList);
-    };
-
-    loadGenres();
+    if (!type || (type !== 'movie' && type !== 'tv')) { navigate('/all/movie'); return; }
+    (type === 'movie' ? getMovieGenres() : getTVGenres()).then(setGenres);
   }, [type, navigate]);
 
-  // Fetch media on page or genre change
   useEffect(() => {
-    const fetchMedia = async () => {
-      if (!type || (type !== 'movie' && type !== 'tv')) return;
+    if (!type || (type !== 'movie' && type !== 'tv')) return;
+    setLoading(true);
+    const url = new URL(`https://api.themoviedb.org/3/discover/${type}`);
+    url.searchParams.append('api_key', API_KEY);
+    url.searchParams.append('page', String(page));
+    if (selectedGenre) url.searchParams.append('with_genres', selectedGenre);
 
-      setLoading(true);
-      try {
-        const url = new URL(`https://api.themoviedb.org/3/discover/${type}`);
-        url.searchParams.append('api_key', API_KEY);
-        url.searchParams.append('page', String(page));
-        if (selectedGenre) {
-          url.searchParams.append('with_genres', selectedGenre);
-        }
-
-        const res = await fetch(url.toString());
-        const data = await res.json();
-
-        setMedia(data.results);
-        setTotalPages(data.total_pages);
-      } catch (err) {
-        console.error('Error fetching media:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchMedia();
+    fetch(url.toString())
+      .then(r => r.json())
+      .then(data => { setMedia(data.results); setTotalPages(data.total_pages); })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, [type, page, selectedGenre]);
 
-  const handleGenreChange = (genreId: string) => {
-    setSearchParams({ genre: genreId, page: '1' }); // reset to page 1
-  };
+  const setGenre = (id: string) => setSearchParams({ genre: id, page: '1' });
+  const goPage   = (p: number)  => setSearchParams({ genre: selectedGenre, page: String(p) });
 
-  const goToPage = (pageNum: number) => {
-    setSearchParams({ genre: selectedGenre, page: String(pageNum) });
-  };
+  const activeGenreName = genres.find(g => String(g.id) === selectedGenre)?.name || 'All Genres';
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">
-        All {type === 'movie' ? 'Movies' : 'TV Shows'}
-      </h1>
+    <div className="max-w-7xl mx-auto px-4 py-10">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+        <h1 className="text-4xl font-black text-white">{type === 'movie' ? 'Movies' : 'TV Shows'}</h1>
 
-      {/* Genre Filter */}
-      <div className="mb-6">
-        <label className="block font-medium mb-2 text-lg">Filter by Genre:</label>
-        <select
-          value={selectedGenre}
-          onChange={(e) => handleGenreChange(e.target.value)}
-          className="px-4 py-2 rounded border border-yellow-500 text-black dark:bg-dark-secondary"
-        >
-          <option value="">All Genres</option>
-          {genres.map((genre) => (
-            <option key={genre.id} value={genre.id}>
-              {genre.name}
-            </option>
-          ))}
-        </select>
+        {/* Genre picker — button-based, no <select> */}
+        <div className="relative">
+          <button onClick={() => setShowGenres(s => !s)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all active:scale-95"
+            style={glass}>
+            <SlidersHorizontal className="w-4 h-4 text-violet-400"/>
+            {activeGenreName}
+            <ChevronRight className={`w-3.5 h-3.5 text-white/40 transition-transform ${showGenres ? 'rotate-90' : ''}`}/>
+          </button>
+
+          {showGenres && (
+            <div className="absolute right-0 mt-2 w-52 rounded-2xl overflow-hidden z-20 py-1 max-h-72 overflow-y-auto"
+              style={{ ...glass, boxShadow:'0 20px 60px rgba(0,0,0,0.6)' }}>
+              {[{ id: 0, name: 'All Genres' }, ...genres].map(g => (
+                <button key={g.id}
+                  onClick={() => { setGenre(g.id === 0 ? '' : String(g.id)); setShowGenres(false); }}
+                  className="w-full text-left px-4 py-2.5 text-sm font-medium flex items-center justify-between transition-all"
+                  style={{
+                    color: String(g.id) === selectedGenre || (g.id === 0 && !selectedGenre) ? '#a78bfa' : '#e2e8f0',
+                    background: 'transparent',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(139,92,246,0.15)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                  {g.name}
+                  {(String(g.id) === selectedGenre || (g.id === 0 && !selectedGenre)) && (
+                    <Check className="w-3.5 h-3.5 text-violet-400"/>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
+      {/* Click outside to close */}
+      {showGenres && (
+        <div className="fixed inset-0 z-10" onClick={() => setShowGenres(false)}/>
+      )}
+
       {loading ? (
-        <div className="text-center">Loading...</div>
+        <div className="flex justify-center py-20">
+          <div className="w-10 h-10 rounded-full border-2 border-violet-500 border-t-transparent animate-spin"/>
+        </div>
       ) : (
         <>
-          <MediaGrid items={media} type={type || 'movie'} />
-          <div className="flex justify-center items-center gap-4 mt-8">
-            <button
-              onClick={() => goToPage(page - 1)}
-              disabled={page <= 1}
-              className="px-4 py-2 bg-yellow-600 rounded disabled:opacity-50"
-            >
-              Previous
+          <MediaGrid items={media} type={type || 'movie'}/>
+          <div className="flex justify-center items-center gap-4 mt-12">
+            <button onClick={() => goPage(page - 1)} disabled={page <= 1}
+              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-bold text-white active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              style={glass}>
+              <ChevronLeft className="w-4 h-4"/> Prev
             </button>
-            <span className="self-center">Page {page} of {totalPages}</span>
-            <button
-              onClick={() => goToPage(page + 1)}
-              disabled={page >= totalPages}
-              className="px-4 py-2 bg-red-300 rounded disabled:opacity-50"
-            >
-              Next
+            <div className="px-5 py-2.5 rounded-xl text-sm font-bold text-white/60" style={glass}>
+              {page} / {totalPages}
+            </div>
+            <button onClick={() => goPage(page + 1)} disabled={page >= totalPages}
+              className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-sm font-bold text-white active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              style={{ background:'linear-gradient(135deg,#7c3aed,#4f46e5)', border:'1px solid rgba(139,92,246,0.5)' }}>
+              Next <ChevronRight className="w-4 h-4"/>
             </button>
           </div>
         </>
