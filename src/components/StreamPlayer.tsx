@@ -1,31 +1,48 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import Hls from "hls.js";
 import {
-  Play, AlertCircle, RefreshCw, ExternalLink,
-  Download, Copy, Check, ChevronDown, ChevronUp,
-  Loader2, FileVideo, Zap, Terminal, List
-} from 'lucide-react';
+  Play, Pause, Download, Subtitles,
+  Volume2, VolumeX, Maximize, Minimize, Settings,
+  WifiOff, SkipBack, SkipForward, Loader2
+} from "lucide-react";
 
 interface Props {
-  type: 'movie' | 'tv';
+  type: "movie" | "tv";
   tmdbId: string;
   title: string;
   episodeData?: { season: number; episode: number };
 }
 
-// Auto-detect: localhost uses Vite proxy → local server, prod uses Render
-const API_BASE = window.location.hostname === 'localhost'
-  ? ''  // Vite proxies /api → localhost:4000
-  : 'https://live-backend-1i4u.onrender.com';
+interface SubtitleTrack {
+  label: string;
+  lang: string;
+  url: string;
+}
 
-const STREAM_SOURCES = [
+
+interface StreamData {
+  playlist: string;
+  subtitles?: SubtitleTrack[];
+  qualities?: { label: string; url: string }[];
+}
+
+// ─── Sources ────────────────────────────────────────────────────────────────
+
+const API_BASE =
+  typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? ""
+    : "https://live-backend-1i4u.onrender.com";
+
+/** Embed-based fallback sources (kept from original) */
+const FALLBACK_SOURCES = [
   {
-    name: 'VidLink',
-    getUrl: (type: string, id: string, s?: number, e?: number) =>
-      type === 'tv' && s && e
-        ? `https://vidlink.pro/tv/${id}/${s}/${e}?autoplay=true&primaryColor=E53E3E`
-        : `https://vidlink.pro/movie/${id}?autoplay=true&primaryColor=E53E3E`,
+    name: "VidLink",
+    getUrl: (t: string, id: string, s?: number, e?: number) =>
+      t === "tv" && s && e
+        ? `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=e53935&autoplay=true`
+        : `https://vidlink.pro/movie/${id}?primaryColor=e53935&autoplay=true`,
   },
-   {
+  {
     name: 'VidSrc',
     getUrl: (type: string, id: string, season?: number, episode?: number) =>
       type === 'tv' && season && episode
@@ -62,353 +79,811 @@ const STREAM_SOURCES = [
   },
 ];
 
-interface SourceEntry { name: string; playlist: string; }
-interface DownloadState {
-  status: 'idle' | 'loading' | 'success' | 'error';
-  playlist: string | null;
-  allSources: SourceEntry[];
-  sourceId: string;
-  error: string | null;
+/** HLS-capable proxy sources (higher quality, self-hosted style) */
+const HLS_SOURCES = [
+  {
+    name: "Primary API",
+    fetch: async (type: string, id: string, season?: number, episode?: number): Promise<StreamData | null> => {
+      const params = new URLSearchParams({
+        isMovie: String(type === "movie"),
+        id,
+        season: String(season ?? 1),
+        episode: String(episode ?? 1),
+      });
+      const res = await fetch(`${API_BASE}/api/stream?${params}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data.stream?.playlist) return null;
+      return {
+        playlist: data.stream.playlist,
+        subtitles: data.stream.subtitles,
+        qualities: data.stream.qualities,
+      };
+    },
+  },
+  {
+    name: "TMDB-HLS Mirror",
+    fetch: async (type: string, id: string, season?: number, episode?: number): Promise<StreamData | null> => {
+      // Example self-hosted HLS mirror endpoint pattern
+      const path = type === "tv"
+        ? `tv/${id}/${season}/${episode}`
+        : `movie/${id}`;
+      const res = await fetch(`https://hlsrouter.cinestream.cc/api/${path}`).catch(() => null);
+      if (!res || !res.ok) return null;
+      const data = await res.json().catch(() => null);
+      if (!data?.m3u8) return null;
+      return { playlist: data.m3u8, subtitles: data.subtitles };
+    },
+  },
+];
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function formatTime(s: number) {
+  if (!isFinite(s)) return "0:00";
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
+function isCapacitor() {
+  return typeof window !== "undefined" && !!(window as any).Capacitor;
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
 export default function StreamPlayer({ type, tmdbId, title, episodeData }: Props) {
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
-  const [activeSourceIndex, setActiveSourceIndex] = useState(0);
-  const [attemptCount, setAttemptCount] = useState(0);
-  const [showDownload, setShowDownload] = useState(false);
-  const [dl, setDl] = useState<DownloadState>({
-    status: 'idle', playlist: null, allSources: [], sourceId: '', error: null
-  });
-  const [copied, setCopied] = useState<string | null>(null);
-  const playerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef<HTMLDivElement>(null);
+  const hideControlsTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  const currentSource = STREAM_SOURCES[activeSourceIndex];
-  const currentUrl = currentSource?.getUrl(type, tmdbId, episodeData?.season, episodeData?.episode);
-  const label = episodeData
-    ? ` S${String(episodeData.season).padStart(2,'0')}E${String(episodeData.episode).padStart(2,'0')}`
-    : '';
+  // Stream state
+  const [stream, setStream] = useState<StreamData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [hlsSourceIndex, setHlsSourceIndex] = useState(0);
+  const [fallbackIndex, setFallbackIndex] = useState(0);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
-  useEffect(() => {
-    setIsLoading(true); setHasError(false);
-    setActiveSourceIndex(0); setAttemptCount(0);
-    setDl({ status: 'idle', playlist: null, allSources: [], sourceId: '', error: null });
-    setShowDownload(false);
-  }, [tmdbId, episodeData]);
+  // Player state
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [buffered, setBuffered] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showSubMenu, setShowSubMenu] = useState(false);
 
-  useEffect(() => {
-    if (!isLoading) return;
-    const t = setTimeout(() => { setHasError(true); setIsLoading(false); }, 12000);
-    return () => clearTimeout(t);
-  }, [isLoading, activeSourceIndex]);
+  // Subtitle state
+  const [subtitles, setSubtitles] = useState<SubtitleTrack[]>([]);
+  const [activeSub, setActiveSub] = useState<string | null>(null);
 
-  const fetchStream = useCallback(async () => {
-    setDl(d => ({ ...d, status: 'loading', error: null }));
-    try {
-      const params = new URLSearchParams({
-        isMovie: String(type === 'movie'),
-        id: tmdbId,
-        season: String(episodeData?.season ?? 1),
-        episode: String(episodeData?.episode ?? 1),
-      });
+  // Quality state
+  const [qualities, setQualities] = useState<{ label: string; url: string }[]>([]);
+  const [activeQuality, setActiveQuality] = useState<string>("auto");
 
-      const res = await fetch(`${API_BASE}/api/stream?${params}`);
-      const data = await res.json();
+  const label = episodeData ? ` S${episodeData.season}E${episodeData.episode}` : "";
 
-      if (!res.ok || data.error) throw new Error(data.error || `Server error ${res.status}`);
+  // ── Load Stream ─────────────────────────────────────────────────────────────
 
-      const playlist = data.stream?.playlist;
-      if (!playlist) throw new Error('No stream URL in response');
+  const loadStream = useCallback(async (hlsIdx = 0) => {
+    setLoading(true);
+    setError(false);
+    setUsingFallback(false);
+    setStream(null);
+    setSubtitles([]);
+    setQualities([]);
+    setHlsSourceIndex(hlsIdx);
 
-      setDl({
-        status: 'success',
-        playlist,
-        allSources: data.allSources || [{ name: data.stream.sourceId, playlist }],
-        sourceId: data.stream.sourceId || 'vidsrc',
-        error: null,
-      });
-    } catch (err: any) {
-      setDl({ status: 'error', playlist: null, allSources: [], sourceId: '', error: err.message });
+    for (let i = hlsIdx; i < HLS_SOURCES.length; i++) {
+      try {
+        const data = await HLS_SOURCES[i].fetch(
+          type, tmdbId, episodeData?.season, episodeData?.episode
+        );
+        if (data) {
+          setStream(data);
+          if (data.subtitles?.length) setSubtitles(data.subtitles);
+          if (data.qualities?.length) setQualities(data.qualities);
+          setLoading(false);
+          return;
+        }
+      } catch { /* try next */ }
     }
+
+    // All HLS sources failed → use embed fallback
+    setError(true);
+    setUsingFallback(true);
+    setLoading(false);
   }, [type, tmdbId, episodeData]);
 
-  const copy = async (text: string) => {
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const ta = document.createElement('textarea');
-        ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
-        document.body.appendChild(ta); ta.focus(); ta.select();
-        document.execCommand('copy'); document.body.removeChild(ta);
+  useEffect(() => { loadStream(0); }, [tmdbId, episodeData]);
+
+  // ── HLS Init ────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!stream?.playlist || !videoRef.current) return;
+    const video = videoRef.current;
+
+    // Cleanup previous instance
+    if (hlsRef.current) { hlsRef.current.destroy(); hlsRef.current = null; }
+
+    const playlistUrl = activeQuality !== "auto"
+      ? qualities.find(q => q.label === activeQuality)?.url ?? stream.playlist
+      : stream.playlist;
+
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      // Native HLS (Safari / iOS via Capacitor)
+      video.src = playlistUrl;
+    } else if (Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        backBufferLength: 90,
+        maxBufferLength: 60,
+        maxMaxBufferLength: 120,
+        startLevel: -1, // auto quality
+      });
+      hlsRef.current = hls;
+      hls.loadSource(playlistUrl);
+      hls.attachMedia(video);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+        if (!qualities.length && data.levels.length > 1) {
+          setQualities([
+            { label: "auto", url: playlistUrl },
+            ...data.levels.map((l, idx) => ({
+              label: `${l.height}p`,
+              url: String(idx),
+            })),
+          ]);
+        }
+      });
+
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data.fatal) {
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            hls.startLoad();
+          } else {
+            // Fatal error: fall to next HLS source
+            if (hlsSourceIndex + 1 < HLS_SOURCES.length) {
+              loadStream(hlsSourceIndex + 1);
+            } else {
+              setError(true);
+              setUsingFallback(true);
+            }
+          }
+        }
+      });
+
+      return () => { hls.destroy(); hlsRef.current = null; };
+    }
+  }, [stream, activeQuality]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    // Remove all existing <track> elements
+    video.querySelectorAll("track").forEach(t => t.remove());
+
+    subtitles.forEach((sub) => {
+      const track = document.createElement("track");
+      track.kind = "subtitles";
+      track.label = sub.label;
+      track.srclang = sub.lang;
+      track.src = sub.url;
+      if (sub.lang === activeSub) track.default = true;
+      video.appendChild(track);
+    });
+  }, [subtitles, activeSub]);
+
+  // ── Video Event Listeners ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const onTimeUpdate = () => {
+      setCurrentTime(video.currentTime);
+      if (video.buffered.length) {
+        setBuffered(video.buffered.end(video.buffered.length - 1));
       }
-      setCopied(text);
-      setTimeout(() => setCopied(null), 2500);
-    } catch { window.prompt('Copy manually:', text); }
+    };
+    const onDuration = () => setDuration(video.duration);
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    const onVolumeChange = () => { setVolume(video.volume); setMuted(video.muted); };
+
+    video.addEventListener("timeupdate", onTimeUpdate);
+    video.addEventListener("durationchange", onDuration);
+    video.addEventListener("play", onPlay);
+    video.addEventListener("pause", onPause);
+    video.addEventListener("volumechange", onVolumeChange);
+    return () => {
+      video.removeEventListener("timeupdate", onTimeUpdate);
+      video.removeEventListener("durationchange", onDuration);
+      video.removeEventListener("play", onPlay);
+      video.removeEventListener("pause", onPause);
+      video.removeEventListener("volumechange", onVolumeChange);
+    };
+  }, [stream]);
+
+  // ── Controls Auto-hide ──────────────────────────────────────────────────────
+
+  const resetHideTimer = useCallback(() => {
+    setShowControls(true);
+    clearTimeout(hideControlsTimer.current);
+    hideControlsTimer.current = setTimeout(() => {
+      if (playing) setShowControls(false);
+    }, 3000);
+  }, [playing]);
+
+  useEffect(() => () => clearTimeout(hideControlsTimer.current), []);
+
+  // ── Fullscreen ──────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const handler = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", handler);
+    return () => document.removeEventListener("fullscreenchange", handler);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      await containerRef.current.requestFullscreen();
+    } else {
+      await document.exitFullscreen();
+    }
   };
 
-  const ytdlp = dl.playlist
-    ? `yt-dlp "${dl.playlist}" -o "${title.replace(/[^a-z0-9]/gi,'_')}${label}.%(ext)s"`
-    : '';
+  // ── Player Controls ─────────────────────────────────────────────────────────
 
-  const switchSource = (i: number) => {
-    setActiveSourceIndex(i); setIsLoading(true); setHasError(false);
-    setAttemptCount(c => c + 1);
-    playerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const togglePlay = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.paused ? v.play() : v.pause();
   };
-  const allFailed = attemptCount >= STREAM_SOURCES.length && hasError;
 
-  const CopyBtn = ({ text, label }: { text: string; label: string }) => (
-    <button onClick={() => copy(text)}
-      className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors font-medium whitespace-nowrap">
-      {copied === text ? <><Check className="w-3.5 h-3.5 text-green-300"/> Copied!</> : <><Copy className="w-3.5 h-3.5"/> {label}</>}
-    </button>
-  );
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const bar = progressRef.current;
+    const v = videoRef.current;
+    if (!bar || !v) return;
+    const rect = bar.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    v.currentTime = ratio * duration;
+  };
+
+  const skip = (secs: number) => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = Math.max(0, Math.min(duration, v.currentTime + secs));
+  };
+
+  // ── Download ─────────────────────────────────────────────────────────────────
+
+  // Use Function() so Vite never statically resolves Capacitor packages
+  const capacitorImport = (pkg: string) =>
+    new Function("p", "return import(p)")(pkg) as Promise<any>;
+
+  const downloadAbortRef = useRef<AbortController | null>(null);
+
+  /**
+   * Parse an M3U8 playlist and return absolute segment URLs.
+   * Handles both master playlists (picks best bandwidth variant) and
+   * media playlists directly.
+   */
+  async function resolveSegments(playlistUrl: string): Promise<string[]> {
+    const res = await fetch(playlistUrl);
+    const text = await res.text();
+    const base = playlistUrl.substring(0, playlistUrl.lastIndexOf("/") + 1);
+
+    const toAbs = (u: string) =>
+      u.startsWith("http") ? u : base + u;
+
+    // Master playlist → pick highest bandwidth variant
+    if (text.includes("#EXT-X-STREAM-INF")) {
+      const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+      let bestBw = -1;
+      let bestUri = "";
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith("#EXT-X-STREAM-INF")) {
+          const bwMatch = lines[i].match(/BANDWIDTH=(\d+)/);
+          const bw = bwMatch ? parseInt(bwMatch[1]) : 0;
+          const uri = lines[i + 1];
+          if (uri && !uri.startsWith("#") && bw > bestBw) {
+            bestBw = bw;
+            bestUri = toAbs(uri);
+          }
+        }
+      }
+      if (bestUri) return resolveSegments(bestUri);
+      return [];
+    }
+
+    // Media playlist → collect .ts / .m4s segments
+    return text
+      .split("\n")
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith("#"))
+      .map(toAbs);
+  }
+
+  /**
+   * When no HLS stream loaded (embed fallback mode), try known direct-MP4
+   * endpoints so the download button is never a dead end.
+   */
+  async function getDirectMp4Url(): Promise<string | null> {
+    const s = episodeData?.season ?? 1;
+    const e = episodeData?.episode ?? 1;
+    const candidates = type === "movie"
+      ? [
+          `https://dl.vidsrc.vip/movie/${tmdbId}`,
+          `https://multiembed.mov/directstream.php?video_id=${tmdbId}&tmdb=1`,
+        ]
+      : [
+          `https://dl.vidsrc.vip/tv/${tmdbId}/${s}/${e}`,
+          `https://multiembed.mov/directstream.php?video_id=${tmdbId}&tmdb=1&s=${s}&e=${e}`,
+        ];
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(4000) });
+        const ct = res.headers.get("content-type") ?? "";
+        if (res.ok && (ct.includes("video") || ct.includes("octet-stream"))) return url;
+      } catch { /* try next */ }
+    }
+    return null;
+  }
+
+  const handleDownload = async () => {
+    // ── No HLS stream → try direct MP4 API or open download page ────────────
+    if (!stream?.playlist) {
+      setDownloadProgress(0);
+      const mp4url = await getDirectMp4Url();
+      if (mp4url) {
+        const a = document.createElement("a");
+        a.href = mp4url;
+        a.download = `${title.replace(/[^a-z0-9]/gi, "_")}${label}.mp4`;
+        a.target = "_blank";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } else {
+        // Open vidsrc download page as last resort
+        const dlPage = type === "movie"
+          ? `https://dl.vidsrc.vip/movie/${tmdbId}`
+          : `https://dl.vidsrc.vip/tv/${tmdbId}/${episodeData?.season ?? 1}/${episodeData?.episode ?? 1}`;
+        window.open(dlPage, "_blank");
+      }
+      setDownloadProgress(100);
+      setTimeout(() => setDownloadProgress(null), 2000);
+      return;
+    }
+
+    // ── Capacitor: write segments to device storage ──────────────────────────
+    if (isCapacitor()) {
+      try {
+        const { Filesystem, Directory } = await capacitorImport("@capacitor/filesystem");
+        const { Preferences } = await capacitorImport("@capacitor/preferences");
+        setDownloadProgress(0);
+
+        const segments = await resolveSegments(stream.playlist);
+        const chunks: Uint8Array[] = [];
+        for (let i = 0; i < segments.length; i++) {
+          const buf = await fetch(segments[i]).then(r => r.arrayBuffer());
+          chunks.push(new Uint8Array(buf));
+          setDownloadProgress(Math.round(((i + 1) / segments.length) * 95));
+        }
+
+        const total = chunks.reduce((s, c) => s + c.length, 0);
+        const merged = new Uint8Array(total);
+        let offset = 0;
+        for (const c of chunks) { merged.set(c, offset); offset += c.length; }
+
+        // base64 encode for Capacitor Filesystem
+        const b64 = btoa(String.fromCharCode(...merged));
+        const filename = `${title.replace(/[^a-z0-9]/gi, "_")}${label}.ts`;
+        await Filesystem.writeFile({
+          path: `offline/${filename}`,
+          data: b64,
+          directory: Directory.Documents,
+          recursive: true,
+        });
+
+        const key = `offline_${tmdbId}_${episodeData?.season ?? ""}_${episodeData?.episode ?? ""}`;
+        await Preferences.set({
+          key,
+          value: JSON.stringify({ title, label, path: `offline/${filename}`, storedAt: Date.now() }),
+        });
+
+        setDownloadProgress(100);
+        setOffline(true);
+        setTimeout(() => setDownloadProgress(null), 2500);
+      } catch (err) {
+        console.error("Capacitor download failed:", err);
+        setDownloadProgress(null);
+      }
+      return;
+    }
+
+    // ── Web: fetch all segments → merge → download as .ts file ──────────────
+    try {
+      const abort = new AbortController();
+      downloadAbortRef.current = abort;
+      setDownloadProgress(0);
+
+      const segments = await resolveSegments(stream.playlist);
+      if (!segments.length) throw new Error("No segments found");
+
+      const chunks: ArrayBuffer[] = [];
+      for (let i = 0; i < segments.length; i++) {
+        if (abort.signal.aborted) return;
+        const buf = await fetch(segments[i], { signal: abort.signal }).then(r => r.arrayBuffer());
+        chunks.push(buf);
+        setDownloadProgress(Math.round(((i + 1) / segments.length) * 100));
+      }
+
+      // Merge all TS segments into one blob and trigger browser download
+      const blob = new Blob(chunks, { type: "video/mp2t" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${title.replace(/[^a-z0-9]/gi, "_")}${label}.ts`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+      setTimeout(() => setDownloadProgress(null), 2500);
+    } catch (err: any) {
+      if (err?.name !== "AbortError") console.error("Download failed:", err);
+      setDownloadProgress(null);
+    }
+  };
+
+  const cancelDownload = () => {
+    downloadAbortRef.current?.abort();
+    setDownloadProgress(null);
+  };
+
+  // ── Offline playback (Capacitor) ─────────────────────────────────────────────
+
+  const loadOffline = async () => {
+    if (!isCapacitor()) return;
+    try {
+      const { Filesystem, Directory } = await capacitorImport("@capacitor/filesystem");
+      const { Preferences } = await capacitorImport("@capacitor/preferences");
+      const key = `offline_${tmdbId}_${episodeData?.season ?? ""}_${episodeData?.episode ?? ""}`;
+      const meta = await Preferences.get({ key });
+      if (!meta.value) return;
+      const { path } = JSON.parse(meta.value);
+      const file = await Filesystem.readFile({ path, directory: Directory.Documents });
+      const blob = new Blob([file.data as any], { type: "application/x-mpegURL" });
+      const url = URL.createObjectURL(blob);
+      setStream({ playlist: url });
+      setUsingFallback(false);
+      setError(false);
+    } catch (e) {
+      console.error("Offline load failed:", e);
+    }
+  };
+
+  // ── Fallback source cycle ────────────────────────────────────────────────────
+
+  const fallback = FALLBACK_SOURCES[fallbackIndex];
+  const fallbackUrl = fallback.getUrl(type, tmdbId, episodeData?.season, episodeData?.episode);
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const bufferedPct = duration > 0 ? (buffered / duration) * 100 : 0;
+
+  // ─────────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="mt-8">
-      <h2 className="text-2xl font-bold mb-4 flex items-center gap-2 dark:text-white">
-        <Play className="w-6 h-6 text-red-500" />
-        {title}<span className="text-red-400 text-lg font-mono">{label}</span>
+    <div className="mt-8 font-sans">
+      {/* Title */}
+      <h2 className="text-xl font-bold mb-3 flex items-center gap-2 text-white">
+        <Play className="w-5 h-5 text-red-500 fill-red-500" />
+        <span>{title}</span>
+        {label && <span className="text-red-400 text-sm font-medium">{label}</span>}
+        {offline && (
+          <span className="ml-auto flex items-center gap-1 text-xs text-emerald-400 font-normal">
+            <WifiOff className="w-3 h-3" /> Offline Ready
+          </span>
+        )}
       </h2>
 
-      {/* Player */}
-      <div ref={playerRef} className="aspect-video rounded-2xl overflow-hidden shadow-2xl bg-black relative ring-1 ring-white/10">
-        {isLoading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950/90 text-white gap-3">
-            <div className="relative">
-              <div className="w-14 h-14 rounded-full border-2 border-red-500/30 border-t-red-500 animate-spin"/>
-              <Play className="absolute inset-0 m-auto w-5 h-5 text-red-400"/>
+      {/* Player container */}
+      <div
+        ref={containerRef}
+        className="aspect-video bg-black rounded-xl overflow-hidden relative group select-none"
+        onMouseMove={resetHideTimer}
+        onMouseLeave={() => playing && setShowControls(false)}
+        onClick={() => { if (!showSettings) togglePlay(); }}
+        style={{ cursor: showControls ? "default" : "none" }}
+      >
+        {/* Loading overlay */}
+        {loading && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black/80 z-10">
+            <Loader2 className="w-10 h-10 animate-spin text-red-500 mb-3" />
+            <span className="text-sm text-gray-300">Finding best stream…</span>
+          </div>
+        )}
+
+        {/* Primary HLS video */}
+        {stream && !usingFallback && (
+          <video
+            ref={videoRef}
+            className="w-full h-full"
+            onClick={e => e.stopPropagation()}
+            onDoubleClick={toggleFullscreen}
+            playsInline
+            crossOrigin="anonymous"
+          />
+        )}
+
+        {/* Fallback iframe */}
+        {usingFallback && !loading && (
+          <iframe
+            src={fallbackUrl}
+            className="w-full h-full border-0"
+            allowFullScreen
+            allow="autoplay; encrypted-media; picture-in-picture"
+            title={`${title}${label}`}
+          />
+        )}
+
+        {/* Custom Controls (only for HLS video) */}
+        {stream && !usingFallback && (
+          <div
+            className="absolute inset-0 flex flex-col justify-end transition-opacity duration-300"
+            style={{ opacity: showControls ? 1 : 0, pointerEvents: showControls ? "auto" : "none" }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent pointer-events-none" />
+
+            {/* Center play/pause indicator */}
+            <div className="absolute inset-0 flex items-center justify-center gap-12 pointer-events-none">
+              <button
+                className="pointer-events-auto p-3 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-sm transition"
+                onClick={() => skip(-10)}
+              >
+                <SkipBack className="w-6 h-6 text-white" />
+              </button>
+              <button
+                className="pointer-events-auto p-5 rounded-full bg-red-600 hover:bg-red-500 shadow-lg shadow-red-900/50 transition"
+                onClick={togglePlay}
+              >
+                {playing
+                  ? <Pause className="w-8 h-8 text-white fill-white" />
+                  : <Play className="w-8 h-8 text-white fill-white ml-1" />}
+              </button>
+              <button
+                className="pointer-events-auto p-3 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-sm transition"
+                onClick={() => skip(10)}
+              >
+                <SkipForward className="w-6 h-6 text-white" />
+              </button>
             </div>
-            <p className="text-sm text-gray-300">Loading <span className="text-white font-medium">{currentSource?.name}</span>...</p>
-            <p className="text-xs text-gray-500">Source {activeSourceIndex + 1} of {STREAM_SOURCES.length}</p>
-          </div>
-        )}
-        {hasError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-950/95 text-white p-6 gap-4">
-            <AlertCircle className="w-12 h-12 text-red-500"/>
-            {allFailed ? (
-              <>
-                <p className="text-lg font-semibold">All sources unavailable</p>
-                <div className="flex gap-3">
-                  <button onClick={() => { setIsLoading(true); setHasError(false); setAttemptCount(0); setActiveSourceIndex(0); }}
-                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4"/> Retry All
-                  </button>
-                  <button onClick={() => { setShowDownload(true); fetchStream(); }}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm flex items-center gap-2">
-                    <Download className="w-4 h-4"/> Get Direct Link
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <p>{currentSource?.name} is unavailable</p>
-                <div className="flex gap-3">
-                  <button onClick={() => { setIsLoading(true); setHasError(false); setAttemptCount(c => c + 1); }}
-                    className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm flex items-center gap-2">
-                    <RefreshCw className="w-4 h-4"/> Retry
-                  </button>
-                  <button onClick={() => switchSource((activeSourceIndex + 1) % STREAM_SOURCES.length)}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm">Next →</button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-        {currentUrl && (
-          <iframe key={`${currentSource?.name}-${attemptCount}`} src={currentUrl}
-            width="100%" height="100%" allowFullScreen allow="autoplay; fullscreen"
-            frameBorder="0" title={`${title}${label}`} className="w-full h-full"
-            onLoad={() => { setIsLoading(false); setHasError(false); }}
-            onError={() => { setIsLoading(false); setHasError(true); }}/>
-        )}
-      </div>
 
-      {/* Controls */}
-      <div className="mt-3 flex flex-col sm:flex-row gap-2 items-start sm:items-center justify-between">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-widest font-medium">Source</span>
-          <div className="flex gap-1 flex-wrap">
-            {STREAM_SOURCES.map((s, i) => (
-              <button key={i} onClick={() => switchSource(i)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                  i === activeSourceIndex
-                    ? 'bg-red-600 text-white shadow-lg shadow-red-900/40'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white'
-                }`}>{s.name}</button>
-            ))}
-          </div>
-        </div>
-        <div className="flex gap-2 flex-shrink-0">
-          <button onClick={() => copy(currentUrl || '')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-lg transition-colors border border-gray-700">
-            {copied === currentUrl ? <Check className="w-3.5 h-3.5 text-green-400"/> : <Copy className="w-3.5 h-3.5"/>}
-            {copied === currentUrl ? 'Copied!' : 'Copy Link'}
-          </button>
-          <button onClick={() => { setShowDownload(v => !v); if (!showDownload && dl.status === 'idle') fetchStream(); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 text-white rounded-lg font-medium">
-            <Download className="w-3.5 h-3.5"/> Download
-            {showDownload ? <ChevronUp className="w-3 h-3"/> : <ChevronDown className="w-3 h-3"/>}
-          </button>
-        </div>
-      </div>
-
-      {/* Download Panel */}
-      {showDownload && (
-        <div className="mt-3 rounded-2xl border border-gray-700/60 bg-gray-950 overflow-hidden shadow-xl">
-          <div className="px-5 py-3 bg-gray-900 border-b border-gray-800 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Zap className="w-4 h-4 text-red-400"/>
-              <span className="text-sm font-semibold text-white">Direct Stream Link</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-900/60 text-red-300 font-mono uppercase tracking-wider">Live</span>
-            </div>
-            <span className="text-xs text-gray-500 truncate max-w-[200px]">{title}{label}</span>
-          </div>
-
-          <div className="p-5 space-y-4">
-            {/* Loading */}
-            {dl.status === 'loading' && (
-              <div className="flex flex-col items-center gap-3 py-8 text-gray-400">
-                <Loader2 className="w-8 h-8 animate-spin text-red-500"/>
-                <p className="text-sm">Scraping stream from VidSrc...</p>
-                <p className="text-xs text-gray-600">This may take 5–10 seconds</p>
-              </div>
-            )}
-
-            {/* Error */}
-            {dl.status === 'error' && (
-              <div className="rounded-xl bg-red-950/40 border border-red-800/50 p-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0"/>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-red-300">Could not fetch stream URL</p>
-                    <p className="text-xs text-red-400/70 mt-1 font-mono break-all">{dl.error}</p>
-
-                    {dl.error?.includes("not installed") ? (
-                      <div className="mt-3 p-3 rounded-lg bg-gray-900 border border-yellow-700/40">
-                        <p className="text-xs text-yellow-300 font-semibold mb-2">Run this once in your project folder:</p>
-                        <div className="flex gap-2 items-center">
-                          <pre className="flex-1 text-xs text-yellow-200/80 font-mono">npm install vidsrc.ts</pre>
-                          <CopyBtn text="npm install vidsrc.ts" label="Copy"/>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-2">Then restart your server: <code className="bg-gray-800 px-1 rounded">npm run start-server</code></p>
-                      </div>
-                    ) : dl.error?.includes('localhost') || dl.error?.includes('fetch') ? (
-                      <div className="mt-3 p-3 rounded-lg bg-gray-900 border border-gray-700">
-                        <p className="text-xs text-gray-400 font-semibold mb-1">Make sure server is running:</p>
-                        <pre className="text-xs text-yellow-300/80 font-mono">npm run start-server</pre>
-                      </div>
-                    ) : null}
-
-                    <div className="flex gap-2 mt-3">
-                      <button onClick={fetchStream}
-                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-red-700 hover:bg-red-600 rounded-lg text-white transition-colors">
-                        <RefreshCw className="w-3 h-3"/> Retry
-                      </button>
-                      <a href={currentUrl || '#'} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-white transition-colors">
-                        <ExternalLink className="w-3 h-3"/> Open Player (has download button)
-                      </a>
-                    </div>
-                  </div>
+            {/* Bottom bar */}
+            <div className="relative z-10 px-4 pb-3 space-y-2">
+              {/* Progress bar */}
+              <div
+                ref={progressRef}
+                className="w-full h-1 bg-white/20 rounded-full cursor-pointer group/bar hover:h-2 transition-all"
+                onClick={seek}
+              >
+                {/* Buffered */}
+                <div
+                  className="absolute h-full bg-white/30 rounded-full"
+                  style={{ width: `${bufferedPct}%` }}
+                />
+                {/* Played */}
+                <div
+                  className="h-full bg-red-500 rounded-full relative"
+                  style={{ width: `${progress}%` }}
+                >
+                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover/bar:opacity-100 transition" />
                 </div>
               </div>
-            )}
 
-            {/* Success */}
-            {dl.status === 'success' && dl.playlist && (
-              <div className="space-y-4">
+              {/* Controls row */}
+              <div className="flex items-center gap-3">
+                {/* Play/pause */}
+                <button onClick={togglePlay} className="text-white hover:text-red-400 transition">
+                  {playing
+                    ? <Pause className="w-5 h-5 fill-current" />
+                    : <Play className="w-5 h-5 fill-current" />}
+                </button>
 
-                {/* Primary M3U8 URL */}
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileVideo className="w-4 h-4 text-green-400"/>
-                    <span className="text-xs font-semibold text-green-400 uppercase tracking-wider">HLS Stream (.m3u8)</span>
-                    <span className="text-[10px] text-gray-500 ml-auto">via {dl.sourceId}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <input readOnly value={dl.playlist}
-                      onClick={e => (e.target as HTMLInputElement).select()}
-                      className="flex-1 text-xs bg-gray-800/80 border border-gray-700 rounded-xl px-3 py-2.5 text-gray-200 font-mono focus:outline-none focus:border-red-500 transition-colors cursor-text"/>
-                    <CopyBtn text={dl.playlist} label="Copy URL"/>
-                  </div>
-                </div>
+                {/* Volume */}
+                <button onClick={() => { if (videoRef.current) videoRef.current.muted = !muted; }} className="text-white hover:text-red-400 transition">
+                  {muted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                </button>
+                <input
+                  type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume}
+                  className="w-20 accent-red-500 cursor-pointer"
+                  onChange={e => {
+                    const v = parseFloat(e.target.value);
+                    if (videoRef.current) { videoRef.current.volume = v; videoRef.current.muted = v === 0; }
+                  }}
+                />
 
-                {/* All sources if multiple */}
-                {dl.allSources.length > 1 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <List className="w-4 h-4 text-purple-400"/>
-                      <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider">
-                        All Sources ({dl.allSources.length})
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      {dl.allSources.map((src, i) => (
-                        <div key={i} className="flex gap-2 items-center">
-                          <span className="text-[10px] text-gray-500 w-16 shrink-0 truncate">{src.name}</span>
-                          <input readOnly value={src.playlist}
-                            onClick={e => (e.target as HTMLInputElement).select()}
-                            className="flex-1 text-xs bg-gray-800/60 border border-gray-700/60 rounded-lg px-2 py-1.5 text-gray-300 font-mono focus:outline-none focus:border-purple-500 cursor-text"/>
-                          <button onClick={() => copy(src.playlist)}
-                            className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors shrink-0">
-                            {copied === src.playlist ? <Check className="w-3 h-3 text-green-400"/> : <Copy className="w-3 h-3 text-gray-400"/>}
+                {/* Time */}
+                <span className="text-white/70 text-xs tabular-nums">
+                  {formatTime(currentTime)} / {formatTime(duration)}
+                </span>
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* Subtitle selector */}
+                {subtitles.length > 0 && (
+                  <div className="relative">
+                    <button
+                      onClick={() => { setShowSubMenu(s => !s); setShowSettings(false); }}
+                      className={`text-white hover:text-red-400 transition ${activeSub ? "text-red-400" : ""}`}
+                    >
+                      <Subtitles className="w-5 h-5" />
+                    </button>
+                    {showSubMenu && (
+                      <div className="absolute bottom-8 right-0 bg-gray-900 border border-white/10 rounded-lg shadow-xl p-1 min-w-[140px] z-50">
+                        <button
+                          className={`w-full text-left px-3 py-1.5 text-xs rounded hover:bg-white/10 ${!activeSub ? "text-red-400" : "text-white"}`}
+                          onClick={() => { setActiveSub(null); setShowSubMenu(false); }}
+                        >
+                          Off
+                        </button>
+                        {subtitles.map(s => (
+                          <button
+                            key={s.lang}
+                            className={`w-full text-left px-3 py-1.5 text-xs rounded hover:bg-white/10 ${activeSub === s.lang ? "text-red-400" : "text-white"}`}
+                            onClick={() => { setActiveSub(s.lang); setShowSubMenu(false); }}
+                          >
+                            {s.label}
                           </button>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {/* yt-dlp command */}
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Terminal className="w-4 h-4 text-yellow-400"/>
-                    <span className="text-xs font-semibold text-yellow-400 uppercase tracking-wider">yt-dlp</span>
-                    <span className="text-[10px] text-gray-600">downloads as .mp4</span>
+                {/* Settings (quality) */}
+                {qualities.length > 0 && (
+                  <div className="relative">
+                    <button
+                      onClick={() => { setShowSettings(s => !s); setShowSubMenu(false); }}
+                      className="text-white hover:text-red-400 transition"
+                    >
+                      <Settings className="w-5 h-5" />
+                    </button>
+                    {showSettings && (
+                      <div className="absolute bottom-8 right-0 bg-gray-900 border border-white/10 rounded-lg shadow-xl p-1 min-w-[120px] z-50">
+                        <p className="px-3 py-1 text-xs text-gray-500 font-semibold uppercase tracking-wider">Quality</p>
+                        {qualities.map(q => (
+                          <button
+                            key={q.label}
+                            className={`w-full text-left px-3 py-1.5 text-xs rounded hover:bg-white/10 ${activeQuality === q.label ? "text-red-400" : "text-white"}`}
+                            onClick={() => { setActiveQuality(q.label); setShowSettings(false); }}
+                          >
+                            {q.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex gap-2">
-                    <pre className="flex-1 text-xs bg-gray-900 border border-gray-700 rounded-xl px-3 py-2.5 text-yellow-200/80 font-mono overflow-x-auto whitespace-nowrap">{ytdlp}</pre>
-                    <CopyBtn text={ytdlp} label="Copy"/>
-                  </div>
-                </div>
+                )}
 
-                {/* Quick actions */}
-                <div className="pt-1 border-t border-gray-800 flex flex-wrap gap-2">
-                  <a href={`vlc://${dl.playlist}`}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-orange-900/40 hover:bg-orange-900/70 border border-orange-700/40 text-orange-300 rounded-lg transition-colors">
-                    🎬 Open in VLC
-                  </a>
-                  <a href={dl.playlist} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-300 rounded-lg transition-colors">
-                    <ExternalLink className="w-3 h-3"/> Open Raw .m3u8
-                  </a>
-                </div>
-              </div>
-            )}
-
-            {/* Footer */}
-            {dl.status !== 'loading' && (
-              <div className="pt-2 border-t border-gray-800/60 flex items-center justify-between">
-                <p className="text-[10px] text-gray-600">URLs expire ~24h. Re-fetch if broken.</p>
-                <button onClick={fetchStream}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded-lg transition-colors">
-                  <RefreshCw className="w-3 h-3"/> Re-fetch
+                {/* Fullscreen */}
+                <button onClick={toggleFullscreen} className="text-white hover:text-red-400 transition">
+                  {fullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Bottom bar: SOURCE tabs + actions ── */}
+      <div className="mt-3 space-y-2">
+
+        {/* Row 1: SOURCE label + tabs */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-semibold tracking-widest text-gray-500 uppercase">Source</span>
+
+          {/* Embed source tabs */}
+          {FALLBACK_SOURCES.map((src, i) => (
+            <button
+              key={src.name}
+              onClick={() => { setFallbackIndex(i); setUsingFallback(true); setStream(null); setError(true); }}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                usingFallback && fallbackIndex === i
+                  ? "bg-red-500 text-white shadow shadow-red-900/50"
+                  : "bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white"
+              }`}
+            >
+              {src.name}
+            </button>
+          ))}
+
+          {/* HLS tab (if it loaded) */}
+          {stream && !usingFallback && (
+            <button
+              className="px-3 py-1 rounded-full text-xs font-medium bg-emerald-600 text-white shadow shadow-emerald-900/40"
+            >
+              HLS ●
+            </button>
+          )}
+        </div>
+
+        {/* Row 2: status left, actions right */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+
+          {/* Playing via / status */}
+          <span className="text-xs text-gray-500">
+            {loading
+              ? "Loading…"
+              : stream && !usingFallback
+                ? <span className="flex items-center gap-1.5">
+                    Playing via <span className="text-white font-medium">HLS</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                    <span className="text-emerald-400">Live</span>
+                  </span>
+                : <span className="flex items-center gap-1.5">
+                    Playing via <span className="text-white font-medium">{FALLBACK_SOURCES[fallbackIndex].name}</span>
+                  </span>
+            }
+          </span>
+
+          {/* Right-side actions */}
+          <div className="flex items-center gap-2">
+
+            {/* Download */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={downloadProgress !== null ? cancelDownload : handleDownload}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition ${
+                  downloadProgress !== null
+                    ? "bg-yellow-600 hover:bg-yellow-500 text-white"
+                    : "bg-red-600 hover:bg-red-500 text-white shadow shadow-red-900/40"
+                }`}
+              >
+                <Download className="w-3.5 h-3.5" />
+                {downloadProgress === null
+                  ? isCapacitor() ? "Save Offline" : "Download"
+                  : downloadProgress === 100
+                    ? "✓ Done!"
+                    : `${downloadProgress}% · Cancel`}
+              </button>
+              {downloadProgress !== null && downloadProgress < 100 && (
+                <div className="w-20 h-1 bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-red-500 rounded-full transition-all duration-300"
+                    style={{ width: `${downloadProgress}%` }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Capacitor offline playback */}
+            {isCapacitor() && offline && (
+              <button
+                onClick={loadOffline}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-emerald-400 rounded-lg font-medium border border-gray-700 transition"
+              >
+                <WifiOff className="w-3 h-3" />
+                Play Offline
+              </button>
             )}
           </div>
         </div>
-      )}
-
-      <div className="mt-2 flex items-center justify-between text-xs text-gray-600 dark:text-gray-500 px-1">
-        <span>Playing via <span className="text-gray-400">{currentSource?.name}</span>{hasError ? ' · ⚠ error' : ''}</span>
-        {!hasError && !isLoading && (
-          <span className="text-green-600 font-medium flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"/> Live
-          </span>
-        )}
       </div>
     </div>
   );
