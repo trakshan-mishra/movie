@@ -36,47 +36,58 @@ const API_BASE =
 /** Embed-based fallback sources (kept from original) */
 const FALLBACK_SOURCES = [
   {
+    name: "VidRock",
+    getUrl: (type: string, id: string, season?: number, episode?: number) =>
+      type === "tv" && season && episode
+        ? `https://vidrock.net/tv/${id}/${season}/${episode}?autoplay=true&autonext=true&theme=e53935`
+        : `https://vidrock.net/movie/${id}?autoplay=true&theme=e53935`
+  },
+
+  {
     name: "VidLink",
     getUrl: (t: string, id: string, s?: number, e?: number) =>
       t === "tv" && s && e
         ? `https://vidlink.pro/tv/${id}/${s}/${e}?primaryColor=e53935&autoplay=true`
         : `https://vidlink.pro/movie/${id}?primaryColor=e53935&autoplay=true`,
   },
+
   {
-    name: 'VidSrc',
+    name: "VidSrc.cc",
     getUrl: (type: string, id: string, season?: number, episode?: number) =>
-      type === 'tv' && season && episode
+      type === "tv" && season && episode
         ? `https://vidsrc.cc/v2/embed/${type}/${id}/${season}/${episode}`
         : `https://vidsrc.cc/v2/embed/${type}/${id}`,
-  }, 
-  {
-    name: 'VidSrc',
-    getUrl: (type: string, id: string, season?: number, episode?: number) => 
-      type === 'tv' && season && episode
-        ? `https://vidsrc.icu/embed/${type}/${id}/${season}/${episode}`
-        : `https://vidsrc.icu/embed/${type}/${id}`
   },
- 
+
   {
-    name: '2Embed.cc',
+    name: "VidSrc.icu",
+    getUrl: (type: string, id: string, season?: number, episode?: number) =>
+      type === "tv" && season && episode
+        ? `https://vidsrc.icu/embed/${type}/${id}/${season}/${episode}`
+        : `https://vidsrc.icu/embed/${type}/${id}`,
+  },
+
+  {
+    name: "2Embed.cc",
     getUrl: (type: string, id: string, season?: number, episode?: number) => {
-      if (type === 'tv' && season && episode) {
+      if (type === "tv" && season && episode) {
         return `https://www.2embed.cc/embedtv/${id}&s=${season}&e=${episode}`;
       } else {
         return `https://www.2embed.cc/embed/${id}`;
       }
     },
   },
+
   {
-    name: '2Embed.skin',
+    name: "2Embed.skin",
     getUrl: (type: string, id: string, season?: number, episode?: number) => {
-      if (type === 'tv' && season && episode) {
+      if (type === "tv" && season && episode) {
         return `https://www.2embed.skin/embedtv/${id}&s=${season}&e=${episode}`;
       } else {
         return `https://www.2embed.skin/embed/${id}`;
       }
     },
-  },
+  }
 ];
 
 /** HLS-capable proxy sources (higher quality, self-hosted style) */
